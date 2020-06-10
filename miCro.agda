@@ -7,7 +7,10 @@ open Eq using (_≡_; refl) -- For test programs
 module miCro where
 
   --- --- Basic Components; not used directly when writing miCro code --- ---
-  
+
+  postulate String : Set
+  {-# BUILTIN STRING String #-}
+
   -- Orders, Used for compare function --
   data Order : Set where
     Less : Order
@@ -77,6 +80,18 @@ module miCro where
   j  * (pos (suc n)) = (j + (j  * (pos n)))
 
   --- --- Syntax part of miCro, these (along with integers) are used to actually write the code --- ---
+
+  -- Variables, with two arguments for name and value, are combined in a variable list to use as environment --
+  -- could also change later to BoolVar, IntVar, etc for more variable types
+  data Variable : Set where
+    Var : String → Int → Variable
+
+  data List (A : Set) : Set where
+    []  : List A
+    _∷_ : A → List A → List A
+
+  infixr 5 _∷_
+  
 
   -- Expressions, for Assigning Variables --
   data Exp : Set where
