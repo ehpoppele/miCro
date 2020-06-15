@@ -10,8 +10,18 @@ module miCro where
   postulate String : Set
   {-# BUILTIN STRING String #-}
 
-  -- Agda builtin Booleans. These are used only for string comparison primitives; the actual code uses True and False (caps on T and F) as a condition data type
+  -- Agda builtin Booleans. These are "true" and "false" and are required within the syntax; the chck function will reduce a cnd to one of these booleans.
   open import Agda.Builtin.Bool
+
+  -- Added Bool functions
+  boolAnd : Bool → Bool → Bool
+  boolAnd true true = true
+  boolAnd c1 c2 = false
+
+  boolOr : Bool → Bool → Bool
+  boolOr true c2 = true
+  boolOr c1 true = true
+  boolOr c1 c2 = false
 
   primitive
     primStringEquality : String → String → Bool
@@ -76,15 +86,14 @@ module miCro where
   data Exp : Set where
     readVar : String → Exp
     readVar++ : String → Exp
-    const : Nat → Exp
     plus : Exp → Exp → Exp
+    const : Nat → Exp
     minus : Exp → Exp → Exp
     times : Exp → Exp → Exp
 
   -- Conditions --
   data Cnd : Set where
-    True : Cnd
-    False : Cnd
+    cndBool : Bool → Cnd
     _Or_ : Cnd → Cnd → Cnd
     _And_ : Cnd → Cnd → Cnd
     _==_ : Exp → Exp → Cnd
@@ -104,54 +113,52 @@ module miCro where
   --- --- Evaluation functions, including eval (applied to programs) and it's helper functions --- ---
 
   --Reduce Exp, to simplify Exp to const values --
-  {-# TERMINATING #-} --Will terminate, but agda doesn't recognize that (must either result in a const or progress through a chain of arithmetic)
-  reduceExp : Exp → Env → Exp
-  reduceExp (readVar str) []  = const zero -- If we can't find the variable we're trying to read, just return zero
-  reduceExp (readVar str1) ((Var str2 x) ∷ v) with primStringEquality str1 str2
-  ...                                             | true = const x
-  ...                                             | false = reduceExp (readVar str1) v
-  reduceExp (readVar++ str) []  = const 1
-  reduceExp (readVar++ str1) ((Var str2 x) ∷ v) with primStringEquality str1 str2
-  ...                                             | true = const (suc x)
-  ...                                             | false = reduceExp (readVar str1) v
-  reduceExp (const n) v = const n
-  reduceExp (plus (const m) (const n)) v = const (m + n)
-  reduceExp (plus e1 e2) v = reduceExp (plus (reduceExp e1 v)  (reduceExp e2 v)) v
-  reduceExp (minus (const m) (const n)) v = const (m - n) 
-  reduceExp (minus e1 e2) v = reduceExp(minus (reduceExp e1 v) (reduceExp e2 v)) v
-  reduceExp (times (const m) (const n)) v = const (m * n)
-  reduceExp (times e1 e2) v = reduceExp(times (reduceExp e1 v) (reduceExp e2 v)) v
+  eval : Env → Exp → Nat
+  eval [] (readVar str)  = zero -- If we can't find the variable we're trying to read, just return zero
+  eval ((Var str2 x) ∷ v) (readVar str1)with primStringEquality str1 str2
+  ...                                             | true = x
+  ...                                             | false = eval v (readVar str1)
+  eval [] (readVar++ str) = 1 --I don't know if this makes any sense; perhaps still return zero since var can't be found?
+  eval ((Var str2 x) ∷ v) (readVar++ str1) with primStringEquality str1 str2
+  ...                                             | true = suc x
+  ...                                             | false = eval v (readVar str1)
+  eval v (const n) = n
+  eval v (plus e1 e2) = (eval v e1) + (eval v e2)
+  eval v (minus e1 e2) = (eval v e1) - (eval v e2)
+  eval v (times e1 e2) = (eval v e1) * (eval v e2)
 
   -- Reduce, to simplify Cnd to boolean values --
-  {-# TERMINATING #-} --Actually must terminate, but agda again can't tell (since here we also use reduceExp)
-  reduceCnd : Cnd → Env → Cnd
-  reduceCnd True _ = True
-  reduceCnd False _ = False
-  reduceCnd (False And c2) _ = False
-  reduceCnd (True And False) _ = False
-  reduceCnd (True And True) _ = True
-  reduceCnd (c1 And c2) x = reduceCnd ((reduceCnd c1 x) And (reduceCnd c2 x)) x
-  reduceCnd (True Or c2) _ = True
-  reduceCnd (False Or True) _ = True
-  reduceCnd (False Or False) _ = False
-  reduceCnd (c1 Or c2) x = reduceCnd ((reduceCnd c1 x) Or (reduceCnd c2 x)) x
-  reduceCnd (const j == const k) _ with compare j k
-  ... | Less = False
-  ... | Equal = True
-  ... | Greater = False
-  reduceCnd (e1 == e2) x = reduceCnd ((reduceExp e1 x) ==(reduceExp e2 x)) x
-  reduceCnd (const j < const k) _ with compare j k
-  ... | Less = True
-  ... | Equal = False
-  ... | Greater = False
-  reduceCnd (e1 < e2) x = reduceCnd ((reduceExp e1 x) < (reduceExp e2 x)) x
-  reduceCnd (const j > const k) _ with compare j k
-  ... | Less = False
-  ... | Equal = False
-  ... | Greater = True
-  reduceCnd (e1 > e2) x = reduceCnd ((reduceExp e1 x) > (reduceExp e2 x)) x
-  reduceCnd (e1 <= e2) x = reduceCnd ((e1 < e2) Or (e1 == e2)) x
-  reduceCnd (e1 >= e2) x = reduceCnd ((e1 > e2) Or (e1 == e2)) x
+  check : Env → Cnd → Bool
+  check _ (cndBool b) = b
+  check v (c1 And c2)  = boolAnd (check v c1) (check v c2)
+  check v (c1 Or c2)  = boolOr (check v c1) (check v c2)
+  check v (j == k)  with compare (eval v j) (eval v k)
+  ... | Less = false
+  ... | Equal = true
+  ... | Greater = false
+  check v (j < k)  with compare (eval v j) (eval v k)
+  ... | Less = true
+  ... | Equal = false
+  ... | Greater = false
+  check v (j > k)  with compare (eval v j) (eval v k)
+  ... | Less = false
+  ... | Equal = false
+  ... | Greater = true
+  check v (j <= k) with compare (eval v j) (eval v k)
+  ... | Less = true
+  ... | Equal = true
+  ... | Greater = false
+  check v (j >= k) with compare (eval v j) (eval v k)
+  ... | Less = false
+  ... | Equal = true
+  ... | Greater = true
+
+  -- Update function, to write variables in environment --
+  update : Env → String → Nat → Env
+  update [] str x = [(Var str x)]
+  update ((Var str1 n) ∷ v) str2 x with primStringEquality str1 str2
+  ... | true = ((Var str1 x) ∷ v)
+  ... | false = ((Var str1 n) ∷ (update v str2 x))
 
   -- Const Exp to Natural number function --
   constToNat : Exp → Nat
@@ -160,47 +167,46 @@ module miCro where
 
   -- Evaluation function, taking value of variable and code for input, producing value of variable at the end --
   {-# TERMINATING #-} --Not actually guaranteed to terminate, because of while; need to be careful writing programs or it will basically freeze my computer
-  eval : Stmt → Env → Env
-  eval (Seq s1 s2) v = eval s2 (eval s1 v)
-  eval (If True s) v = eval s v
-  eval (If False s) v = v
-  eval (If c s) v = eval (If (reduceCnd c v) s) v
-  eval (IfElse True s1 s2) v = eval s1 v
-  eval (IfElse False s1 s2) v = eval s2 v
-  eval (IfElse c s1 s2) v = eval (IfElse (reduceCnd c v) s1 s2) v
-  eval (While False s) v = v
-  eval (While c s) v = eval (If c (Seq s (While c s))) v
-  eval (AssignVar str1 (const x)) [] = [(Var str1 x)]
-  eval (AssignVar str1 (const x)) ((Var str2 n) ∷ v) with primStringEquality str1 str2
-  ...  | true = ((Var str2 x) ∷ v)
-  ...  | false = ((Var str2 n)∷(eval (AssignVar str1 (const x)) v))
-  eval (AssignVar str1 e) v = eval (AssignVar str1 (reduceExp e v)) v
+  exec : Env → Stmt → Env
+  exec v (Seq s1 s2) = exec (exec v s1) s2
+  exec v (If c s) with (check v c)
+  ...                 | true = exec v s
+  ...                 | false = v
+  exec v (IfElse c s1 s2) with (check v c)
+  ...                         | true = exec v s1
+  ...                         | false = exec v s2
+  exec v (While c s) with (check v c)
+  ... | false = v
+  ... | true = exec v (Seq s (While c s))
+  exec v (AssignVar str e) = update v str (eval v e)
 
+
+--open miCro
 
   --- --- Test Programs --- ---
   -- Everything has to be written on one line I think since agda pays attention to white space --
-  -- form is eval (code) (init x) ≡ expected outcome --
+  -- form is exec (code) (init x) ≡ expected outcome --
   -- Everything is nicely reflexive; intrinsic proofs I guess based on the typing? --
   
-  test1 : ∀ ( n : Nat ) → eval (Seq (AssignVar "X" (const 1)) (AssignVar "X" (readVar++ "X"))) [(Var "X" n)] ≡ [(Var "X" 2)]
+  test1 : ∀ ( n : Nat ) → exec  [(Var "X" n)] (Seq (AssignVar "X" (const 1)) (AssignVar "X" (readVar++ "X"))) ≡ [(Var "X" 2)]
   test1 n = refl
 
-  test2 : eval (If ((readVar "X") == (const 0)) (AssignVar "X" (plus (readVar "X") (const 1)))) [(Var "X" 0)] ≡ [(Var "X" 1)]
+  test2 : exec [] (If ((readVar "X") == (const 0)) (AssignVar "X" (plus (readVar "X") (const 1)))) ≡ [(Var "X" 1)]
   test2 = refl
 
-  test3 : eval (While ((readVar "X") == (const 0)) (AssignVar "X" (plus (readVar "X") (const 1)))) [(Var "X" 0)] ≡ [(Var "X" 1)]
+  test3 : exec [] (While ((readVar "X") == (const 0)) (AssignVar "X" (plus (readVar "X") (const 1)))) ≡ [(Var "X" 1)]
   test3 = refl
 
-  whileTest : eval (While ((readVar "X") < (const 10)) (AssignVar "X" (plus (const 1) (readVar "X")))) []  ≡ [(Var "X" 10)]
+  whileTest : exec [] (While ((readVar "X") < (const 10)) (AssignVar "X" (plus (const 1) (readVar "X")))) ≡ [(Var "X" 10)]
   whileTest = refl 
 
   -- Can't do much without multiple vars, but this repeatedly X as long as it is less than or equal to 32 --
-  greatestLesserPower : eval (While ((readVar "X") <= (const 32)) (AssignVar "X" (times (readVar "X") (readVar "X")))) [(Var "X" 2)] ≡ [(Var "X" 256)]
+  greatestLesserPower : exec [(Var "X" 2)] (While ((readVar "X") <= (const 32)) (AssignVar "X" (times (readVar "X") (readVar "X")))) ≡ [(Var "X" 256)]
   greatestLesserPower = refl
 
   -- Test with multiple Variables, based on Hoare Logic pdf from UW --
 
-  UWEx1 : eval (While ((readVar "k") <= (const 4)) (Seq (AssignVar "sum" (plus (readVar "k") (readVar "sum"))) (AssignVar "k" (readVar++ "k")))) [(Var "k" 0), (Var "sum" 0)] ≡ [(Var "k" 5), (Var "sum" 10)]
+  UWEx1 : exec [(Var "k" 0), (Var "sum" 0)] (While ((readVar "k") <= (const 4)) (Seq (AssignVar "sum" (plus (readVar "k") (readVar "sum"))) (AssignVar "k" (readVar++ "k")))) ≡ [(Var "k" 5), (Var "sum" 10)]
   UWEx1 = refl
 
-  -- To Add: Rules on equivalence of Env; if Env A contains Env B, then A ≡ B? or some similar relation, so that rhs of above statement/proofs can be condensed to only 1 variable --
+-- To Add: Rules on equivalence of Env; if Env A contains Env B, then A ≡ B? or some similar relation, so that rhs of above statement/proofs can be condensed to only 1 variable --
