@@ -69,17 +69,19 @@ module miCro where
     Var : String → Nat → Variable
 
   data Env : Set where
-    []  : Env
-    _∷_ : Variable → Env → Env
+    [e]  : Env
+    _:e:_ : Variable → Env → Env
 
-  infixr 5 _∷_
+  infixr 5 _:e:_
 
+  {-
   pattern [_] z = z ∷ []
   pattern [_,_] y z = y ∷ z ∷ []
   pattern [_,_,_] x y z = x ∷ y ∷ z ∷ []
   pattern [_,_,_,_] w x y z = w ∷ x ∷ y ∷ z ∷ []
   pattern [_,_,_,_,_] v w x y z = v ∷ w ∷ x ∷ y ∷ z ∷ []
   pattern [_,_,_,_,_,_] u v w x y z = u ∷ v ∷ w ∷ x ∷ y ∷ z ∷ []
+  -}
   
 
   -- Expressions, for Assigning Variables --
@@ -94,9 +96,11 @@ module miCro where
   -- Conditions --
   data Cnd : Set where
     cndBool : Bool → Cnd
+    Not : Cnd → Cnd
     _Or_ : Cnd → Cnd → Cnd
     _And_ : Cnd → Cnd → Cnd
     _==_ : Exp → Exp → Cnd
+    _!=_ : Exp → Exp → Cnd
     _<_ : Exp → Exp → Cnd
     _>_ : Exp → Exp → Cnd
     _<=_ : Exp → Exp → Cnd
@@ -109,19 +113,20 @@ module miCro where
     IfElse : Cnd → Stmt → Stmt → Stmt
     While : Cnd → Stmt → Stmt
     AssignVar : String → Exp → Stmt
+    No-op : Stmt
 
   --- --- Evaluation functions, including eval (applied to programs) and it's helper functions --- ---
 
   --Reduce Exp, to simplify Exp to const values --
   eval : Env → Exp → Nat
-  eval [] (readVar str)  = zero -- If we can't find the variable we're trying to read, just return zero
-  eval ((Var str2 x) ∷ v) (readVar str1)with primStringEquality str1 str2
+  eval [e] (readVar str)  = zero -- If we can't find the variable we're trying to read, just return zero
+  eval ((Var str2 x) :e: v) (readVar str1)with primStringEquality str1 str2
   ...                                             | true = x
   ...                                             | false = eval v (readVar str1)
-  eval [] (readVar++ str) = 1 --I don't know if this makes any sense; perhaps still return zero since var can't be found?
-  eval ((Var str2 x) ∷ v) (readVar++ str1) with primStringEquality str1 str2
+  eval [e] (readVar++ str) = 1 --I don't know if this makes any sense; perhaps still return zero since var can't be found?
+  eval ((Var str2 x) :e: v) (readVar++ str1) with primStringEquality str1 str2
   ...                                             | true = suc x
-  ...                                             | false = eval v (readVar str1)
+  ...                                             | false = eval v (readVar++ str1)
   eval v (const n) = n
   eval v (plus e1 e2) = (eval v e1) + (eval v e2)
   eval v (minus e1 e2) = (eval v e1) - (eval v e2)
@@ -129,6 +134,9 @@ module miCro where
 
   -- Reduce, to simplify Cnd to boolean values --
   check : Env → Cnd → Bool
+  check v (Not c) with check v c
+  ... | false = true
+  ... | true = false
   check _ (cndBool b) = b
   check v (c1 And c2)  = boolAnd (check v c1) (check v c2)
   check v (c1 Or c2)  = boolOr (check v c1) (check v c2)
@@ -136,6 +144,10 @@ module miCro where
   ... | Less = false
   ... | Equal = true
   ... | Greater = false
+  check v (j != k) with compare (eval v j) (eval v k)
+  ... | Less = true
+  ... | Equal = false
+  ... | Greater = true
   check v (j < k)  with compare (eval v j) (eval v k)
   ... | Less = true
   ... | Equal = false
@@ -155,15 +167,10 @@ module miCro where
 
   -- Update function, to write variables in environment --
   update : Env → String → Nat → Env
-  update [] str x = [(Var str x)]
-  update ((Var str1 n) ∷ v) str2 x with primStringEquality str1 str2
-  ... | true = ((Var str1 x) ∷ v)
-  ... | false = ((Var str1 n) ∷ (update v str2 x))
-
-  -- Const Exp to Natural number function --
-  constToNat : Exp → Nat
-  constToNat (const n) = n
-  constToNat e = 0 --just to fill pattern; shouldn't be calling this on non-const Exps
+  update [e] str x = ((Var str x) :e: [e])
+  update ((Var str1 n) :e: v) str2 x with primStringEquality str1 str2
+  ... | true = ((Var str1 x) :e: v)
+  ... | false = ((Var str1 n) :e: (update v str2 x))
 
   -- Evaluation function, taking value of variable and code for input, producing value of variable at the end --
   {-# TERMINATING #-} --Not actually guaranteed to terminate, because of while; need to be careful writing programs or it will basically freeze my computer
@@ -179,34 +186,34 @@ module miCro where
   ... | false = v
   ... | true = exec v (Seq s (While c s))
   exec v (AssignVar str e) = update v str (eval v e)
-
-
---open miCro
+  exec v No-op = v
 
   --- --- Test Programs --- ---
   -- Everything has to be written on one line I think since agda pays attention to white space --
   -- form is exec (code) (init x) ≡ expected outcome --
   -- Everything is nicely reflexive; intrinsic proofs I guess based on the typing? --
   
-  test1 : ∀ ( n : Nat ) → exec  [(Var "X" n)] (Seq (AssignVar "X" (const 1)) (AssignVar "X" (readVar++ "X"))) ≡ [(Var "X" 2)]
+  test1 : ∀ ( n : Nat ) → exec  ((Var "X" n) :e: [e]) (Seq (AssignVar "X" (const 1)) (AssignVar "X" (readVar++ "X"))) ≡ ((Var "X" 2) :e: [e])
   test1 n = refl
 
-  test2 : exec [] (If ((readVar "X") == (const 0)) (AssignVar "X" (plus (readVar "X") (const 1)))) ≡ [(Var "X" 1)]
+  test2 : exec [e] (If ((readVar "X") == (const 0)) (AssignVar "X" (plus (readVar "X") (const 1)))) ≡ ((Var "X" 1) :e: [e])
   test2 = refl
 
-  test3 : exec [] (While ((readVar "X") == (const 0)) (AssignVar "X" (plus (readVar "X") (const 1)))) ≡ [(Var "X" 1)]
+  test3 : exec [e] (While ((readVar "X") == (const 0)) (AssignVar "X" (plus (readVar "X") (const 1)))) ≡ ((Var "X" 1) :e: [e])
   test3 = refl
 
-  whileTest : exec [] (While ((readVar "X") < (const 10)) (AssignVar "X" (plus (const 1) (readVar "X")))) ≡ [(Var "X" 10)]
+
+  whileTest : exec [e] (While ((readVar "X") < (const 10)) (AssignVar "X" (plus (const 1) (readVar "X")))) ≡ ((Var "X" 10) :e: [e])
   whileTest = refl 
 
   -- Can't do much without multiple vars, but this repeatedly X as long as it is less than or equal to 32 --
-  greatestLesserPower : exec [(Var "X" 2)] (While ((readVar "X") <= (const 32)) (AssignVar "X" (times (readVar "X") (readVar "X")))) ≡ [(Var "X" 256)]
+  greatestLesserPower : exec ((Var "X" 2) :e: [e]) (While ((readVar "X") <= (const 32)) (AssignVar "X" (times (readVar "X") (readVar "X")))) ≡ ((Var "X" 256) :e: [e])
   greatestLesserPower = refl
 
   -- Test with multiple Variables, based on Hoare Logic pdf from UW --
 
-  UWEx1 : exec [(Var "k" 0), (Var "sum" 0)] (While ((readVar "k") <= (const 4)) (Seq (AssignVar "sum" (plus (readVar "k") (readVar "sum"))) (AssignVar "k" (readVar++ "k")))) ≡ [(Var "k" 5), (Var "sum" 10)]
+  UWEx1 : exec [e] (While ((readVar "k") <= (const 4)) (Seq (AssignVar "sum" (plus (readVar "k") (readVar "sum"))) (AssignVar "k" (readVar++ "k")))) ≡ ((Var "sum" 10) :e: (Var "k" 5) :e: [e])
   UWEx1 = refl
 
 -- To Add: Rules on equivalence of Env; if Env A contains Env B, then A ≡ B? or some similar relation, so that rhs of above statement/proofs can be condensed to only 1 variable --
+
