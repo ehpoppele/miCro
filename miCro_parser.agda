@@ -15,11 +15,27 @@ module miCro_parser where
 
   open import Agda.Builtin.Bool
 
+  postulate Char : Set
+  {-# BUILTIN CHAR Char #-}
   
+  data List {a} (A : Set a) : Set a where
+    []  : List A
+    _∷_ : (x : A) (xs : List A) → List A
+  {-# BUILTIN LIST List #-}
+  infixr 5 _∷_
+
+  primitive
+    primStringToList : String → List Char
+    primIsDigit : Char → Bool
+    primCharToNat : Char → Nat
 
   data Tokens : Set where
     [t] : Tokens
     _:t:_ : String → Tokens → Tokens
+
+  _+t+_ : Tokens → Tokens → Tokens
+  [t]       +t+ ys  =  ys
+  (x :t: xs) +t+ ys  =  x :t: (xs +t+ ys)
 
   --- PARSING FUNCTION ---
   --- From this point, we assume that we have a tokens list to work with and now convert that to a stmt type
@@ -48,7 +64,7 @@ module miCro_parser where
   splitR : Tokens → String → Tokens
   
   splitL [t] str = [t]
-  splitL ( "(" :t: tkns) str = ((splitL tkns ")" ) :+: (splitL (splitR tkns ")" ) str))
+  splitL ( "(" :t: tkns) str = ((splitL tkns ")" ) +t+ (splitL (splitR tkns ")" ) str))
   splitL (str1 :t: tkns) str2 with primStringEquality str1 str2
   ...                           | true = [t]
   ...                           | false = str1 :t: (splitL tkns str2)
@@ -84,6 +100,7 @@ module miCro_parser where
   comp_token_search (str :t: tkns) = comp_token_search tkns
 
   -- Similarly returns the first instance of "+" or "-" if one occurs
+  {-# TERMINATING #-}
   pm_search : Tokens → String
   pm_search [t] = "none"
   pm_search ("(" :t: tkns) = pm_search (splitR tkns ")" )
@@ -91,17 +108,44 @@ module miCro_parser where
   pm_search ("-" :t: tks) = "-"
   pm_search (str :t: tkns) = pm_search tkns
 
+  {-
+  -- Checks if a given character is a digit --
+  is_digit : Char → Bool
+  is_digit '0' = true
+  is_digit '1' = true
+  is_digit '2' = true
+  is_digit '3' = true
+  is_digit '4' = true
+  is_digit '5' = true
+  is_digit '6' = true
+  is_digit '7' = true
+  is_digit '8' = true
+  is_digit '9' = true
+  is_digit c = false
+  -}
+
+  -- Checks if a given character list is a number --
+  is_number : List Char → Bool
+  is_number [] = false
+  is_number (c ∷ []) with primIsDigit c
+  ... | true = true
+  ... | false = false
+  is_number (c ∷ chars) with primIsDigit c
+  ... | true = is_number chars
+  ... | false = false
+
   -- Converts string to a nat, using arithmetic from miCro file
-  {-str_nat_helper: Nat → Tokens → Nat
-  str_nat_helper n [t] = n 
-  str_nat_helper n (m :t: chars) = (str_nat_helper ((n * 10) + m) chars) 
+  str_nat_helper : Nat → List Char → Nat
+  str_nat_helper n [] = n 
+  str_nat_helper n (m ∷ chars) = (str_nat_helper ((n * 10) + (primCharToNat m)) chars) 
 
   string_to_nat : String → Nat
-  string_to_nat str = str_nat_helper 0 (primStringToList str)-}
+  string_to_nat str = str_nat_helper 0 (primStringToList str)
 
   -- Parsing functions, directly interacting with the stream and parsing it. Split into condition, expression, and statement
 
   -- Parse functions for Conditions and Expressions, which are handled separately --
+  {-# TERMINATING #-}
   parse_exp : Tokens → Exp
   parse_pm : Tokens → Exp
   parse_plus_rest : Exp → Tokens → Exp
@@ -109,28 +153,28 @@ module miCro_parser where
   parse_mult : Tokens → Exp
   parse_term : Tokens → Exp
 
-  parse_exp tkns = parse_pm
+  parse_exp tkns = parse_pm tkns
   parse_pm tkns with pm_search tkns
-  ... | "+" = parse_plus_rest (parse_exp (splitL tkns "+")) (splitR tkns "+")
-  ... | "-" = parse_minus_rest (parse_exp (splitL tkns "-")) (splitR tkns "+")
+  ... | "+" = parse_plus_rest (parse_mult (splitL tkns "+")) (splitR tkns "+")
+  ... | "-" = parse_minus_rest (parse_mult (splitL tkns "-")) (splitR tkns "+")
   ... | none = parse_mult tkns
 
   parse_plus_rest exp tkns with pm_search tkns
-  ... | "+" = parse_rest_plus (plus exp (parse_exp (splitL tkns "+"))) (splitR tkns "+")
-  ... | "-" = parse_minus_rest (plus exp (parse_exp (splitL tkns "-"))) (splitR tkns "+")
+  ... | "+" = parse_plus_rest (plus exp (parse_mult (splitL tkns "+"))) (splitR tkns "+")
+  ... | "-" = parse_minus_rest (plus exp (parse_mult (splitL tkns "-"))) (splitR tkns "+")
   ... | none = (plus exp (parse_exp tkns))
 
   parse_minus_rest exp tkns with pm_search tkns
-  ... | "+" = parse_rest_plus (minus exp (parse_exp (splitL tkns "+"))) (splitR tkns "+")
-  ... | "-" = parse_minus_rest (minus exp (parse_exp (splitL tkns "-"))) (splitR tkns "+")
+  ... | "+" = parse_plus_rest (minus exp (parse_mult (splitL tkns "+"))) (splitR tkns "+")
+  ... | "-" = parse_minus_rest (minus exp (parse_mult (splitL tkns "-"))) (splitR tkns "+")
   ... | none = (minus exp (parse_exp tkns))
 
-  parse_mult tkns with token_search "*"
-  ... | true = times (parse_exp (splitL tkns "*")) (parse_exp (splitR tkns "*"))
+  parse_mult tkns with token_search tkns "*"
+  ... | true = times (parse_term (splitL tkns "*")) (parse_term (splitR tkns "*"))
   ... | false = parse_term tkns
 
   parse_term ( "(" :t: tkns) = parse_exp (splitL tkns ")")
-  parse term (str :t: [t]) with is_number str -- At this point we should either have a number or a var; otherwise there's been some error
+  parse_term (str :t: [t]) with is_number (primStringToList str) -- At this point we should either have a number or a var; otherwise there's been some error
   ... | true = (const (string_to_nat str))
   ... | false = (readVar str) 
   parse_term tkns = (const 404) -- We can't raise an error, but we should never reach here, since this means something went awry. 
