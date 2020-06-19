@@ -201,7 +201,7 @@ module miCro_parser where
   parse_stmt [t] = No-op
   parse_stmt ("if" :t: ("(" :t: tkns)) = Seq (If (parse_condition (splitL tkns ")")) (parse_stmt (splitR (splitL tkns "}") "{"))) (parse_stmt (splitR tkns ";"))
   parse_stmt ("ifElse" :t: ( "("  :t: tkns)) = Seq (IfElse (parse_condition (splitL tkns ")")) (parse_stmt (splitR (splitL tkns "}") "{")) (parse_stmt (splitR (splitL (splitR tkns "}") "}") "{"))) (parse_stmt (splitR tkns ";"))
-  parse_stmt ("while" :t:( "(" :t: tkns)) =  Seq (While (parse_condition (splitL tkns ")")) (parse_stmt (splitR (splitL tkns "}") "{"))) (parse_stmt (splitR tkns ";"))
+  parse_stmt ("while" :t:( "(" :t: tkns)) =  Seq (While (parse_condition (splitL tkns ")")) (parse_stmt (splitR (splitL tkns "}") "{"))) (parse_stmt (splitR (splitR tkns "}") ";"))
   parse_stmt (str :t: ( "=" :t: tkns)) = Seq (AssignVar str (parse_exp (splitL tkns ";"))) (parse_stmt (splitR tkns ";"))
   parse_stmt error = No-op
 

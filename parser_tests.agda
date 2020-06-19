@@ -94,3 +94,9 @@ tokens8 = "INIT" :t: "(" :t: "x" :t: "=" :t: "2" :t: "," :t: "y" :t: "=" :t: "3"
 
 runTest : (run tokens8) ≡ (Var "x" 3) :e: (Var "y" 3) :e: [e]
 runTest = refl
+
+-- Tokens 9 is "while (y < 9) {x = x + y; y = y + 2;};"
+tokens9 = "while" :t: "(" :t: "y" :t: "<" :t: "9" :t: ")" :t: "{" :t: "x" :t: "=" :t: "x" :t: "+" :t: "y" :t: ";" :t: "y" :t: "=" :t: "y" :t: "+" :t: "2" :t: ";" :t: "}" :t: ";" :t: [t]
+
+parseTest7 : (parse_stmt tokens9) ≡ Seq (While ((readVar "y") < (const 9)) (Seq (AssignVar "x" (plus (readVar "x") (readVar "y"))) (Seq (AssignVar "y" (plus (readVar "y") (const 2))) (No-op)) )) No-op
+parseTest7 = refl
