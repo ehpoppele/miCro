@@ -66,38 +66,13 @@ module miCro where
   -- Variables, with two arguments for name and value, are combined in a variable list to use as environment --
   -- could also change later to BoolVar, IntVar, etc for more variable types
   data Variable : Set where
-    NatVar : String → Nat → Variable
-    PtrVar : String → Nat → Variable
-
-  -- Used for passing an identifier to functions for the type of the variable being used (so we can pass VarType and String instead of two Strings)
-  -- Fully written out here so it's distinguished from the Nat or Ptr types/identifiers used elsewhere
-  data VarType : Set where
-    Natural : VarType
-    Pointer : VarType
-
-  data Heap : Set where
-    [h] : Heap
-    _:H:_ : Nat → Heap → Heap
-
-  infixr 5 _:H:_
+    Var : String → Nat → Variable
 
   data Env : Set where
     [e]  : Env
     _:e:_ : Variable → Env → Env
 
   infixr 5 _:e:_
-
-  -- RAM uses the form "Env & Heap" for data.
-  data RAM : Set where
-    _&_ : Env → Heap → RAM
-
-  infixr 5 _&_
-
-  -- Helper function to return value from a given heap address --
-  readHeap : Heap → Nat → Nat
-  readHeap [h] x = zero
-  readHeap (n :H: [h]) zero = n
-  readHeap (n :H: h) (suc x) = readHeap h x
 
   -- Expressions, for Assigning Variables --
   data Exp : Set where
@@ -127,80 +102,65 @@ module miCro where
     If : Cnd → Stmt → Stmt
     IfElse : Cnd → Stmt → Stmt → Stmt
     While : Cnd → Stmt → Stmt
-    AssignVar : VarType → String → Exp → Stmt
+    AssignVar : String → Exp → Stmt
     No-op : Stmt
 
   --- --- Evaluation functions, including eval (applied to programs) and it's helper functions --- ---
 
   --Reduce Exp, to simplify Exp to const values --
-  eval : RAM → Exp → Nat
-  eval ([e] & h) (readVar str)  = zero -- If we can't find the variable we're trying to read, just return zero
-  eval (((NatVar str2 x) :e: v) & h) (readVar str1) with primStringEquality str1 str2
+  eval : Env → Exp → Nat
+  eval [e] (readVar str)  = zero -- If we can't find the variable we're trying to read, just return zero
+  eval ((Var str2 x) :e: v) (readVar str1)with primStringEquality str1 str2
   ...                                             | true = x
   ...                                             | false = eval v (readVar str1)
-  -- Would like to use some OR attached to the above With to get rid of these extra lines, but can't find out how to currently
-  eval (((PtrVar str2 x) :e: v) & h) (readVar str1) with primStringEquality str1 str2
-  ...                                             | true = (readHeap h x)
-  ...                                             | false = eval v (readVar str1)
-  eval ([e] & h) (readVar++ str) = 1 --I don't know if this makes any sense; perhaps still return zero since var can't be found?
-  eval (((NatVar str2 x) :e: v) & h) (readVar++ str1) with primStringEquality str1 str2
+  eval [e] (readVar++ str) = 1 --I don't know if this makes any sense; perhaps still return zero since var can't be found?
+  eval ((Var str2 x) :e: v) (readVar++ str1) with primStringEquality str1 str2
   ...                                             | true = suc x
   ...                                             | false = eval v (readVar++ str1)
-  eval (((PtrVar str2 x) :e: v) & h) (readVar++ str1) with primStringEquality str1 str2
-  ...                                             | true = suc (readHeap h x)
-  ...                                             | false = eval v (readVar++ str1)
-  eval r (const n) = n
-  eval r (plus e1 e2) = (eval r e1) + (eval r e2)
-  eval r (minus e1 e2) = (eval r e1) - (eval r e2)
-  eval r (times e1 e2) = (eval r e1) * (eval r e2)
+  eval v (const n) = n
+  eval v (plus e1 e2) = (eval v e1) + (eval v e2)
+  eval v (minus e1 e2) = (eval v e1) - (eval v e2)
+  eval v (times e1 e2) = (eval v e1) * (eval v e2)
 
   -- Reduce, to simplify Cnd to boolean values --
-  check : RAM → Cnd → Bool
-  check r (Not c) with check r c
+  check : Env → Cnd → Bool
+  check v (Not c) with check v c
   ... | false = true
   ... | true = false
   check _ (cndBool b) = b
-  check r (c1 And c2)  = boolAnd (check r c1) (check r c2)
-  check r (c1 Or c2)  = boolOr (check r c1) (check r c2)
-  check r (j == k)  with compare (eval r j) (eval r k)
+  check v (c1 And c2)  = boolAnd (check v c1) (check v c2)
+  check v (c1 Or c2)  = boolOr (check v c1) (check v c2)
+  check v (j == k)  with compare (eval v j) (eval v k)
   ... | Less = false
   ... | Equal = true
   ... | Greater = false
-  check r (j != k) with compare (eval r j) (eval r k)
+  check v (j != k) with compare (eval v j) (eval v k)
   ... | Less = true
   ... | Equal = false
   ... | Greater = true
-  check r (j < k)  with compare (eval r j) (eval r k)
+  check v (j < k)  with compare (eval v j) (eval v k)
   ... | Less = true
   ... | Equal = false
   ... | Greater = false
-  check r (j > k)  with compare (eval r j) (eval r k)
+  check v (j > k)  with compare (eval v j) (eval v k)
   ... | Less = false
   ... | Equal = false
   ... | Greater = true
-  check r (j <= k) with compare (eval r j) (eval r k)
+  check v (j <= k) with compare (eval v j) (eval v k)
   ... | Less = true
   ... | Equal = true
   ... | Greater = false
-  check r (j >= k) with compare (eval r j) (eval r k)
+  check v (j >= k) with compare (eval v j) (eval v k)
   ... | Less = false
   ... | Equal = true
   ... | Greater = true
 
   -- Update function, to write variables in environment --
-  -- Heap not needed for this function, so I'm sticking with old implementation of env only
-  -- Pattern matching again a little messy here; not sure how to best clean up
-  update : Env → VarType → String → Nat → RAM
-  update [e] Natural str x = ((NatVar str x) :e: [e])
-  update [e] Pointer str x = ((PtrVar str x) :e: [e])
-  update ((NatVar str1 n) :e: v) Natural str2 x with primStringEquality str1 str2
-  ... | true = ((NatVar str1 x) :e: v)
-  ... | false = ((t str1 n) :e: (update v Natural str2 x))
-  update ((NatVar str1 n) :e: v) Pointer str2 x with primStringEquality str1 str2
-  ... | true = ((PtrVar str1 x) :e: v)
-  ... | false = ((NatVar str1 n) :e: (update v Pointer str2 x))
-
-  -- Write function, to write values into the heap
+  update : Env → String → Nat → Env
+  update [e] str x = ((Var str x) :e: [e])
+  update ((Var str1 n) :e: v) str2 x with primStringEquality str1 str2
+  ... | true = ((Var str1 x) :e: v)
+  ... | false = ((Var str1 n) :e: (update v str2 x))
 
   -- Evaluation function, taking value of variable and code for input, producing value of variable at the end --
   {-# TERMINATING #-} --Not actually guaranteed to terminate, because of while; need to be careful writing programs or it will basically freeze my computer
