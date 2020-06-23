@@ -63,17 +63,17 @@ module miCro where
 
   --- --- Syntax part of miCro, these (along with integers) are used to actually write the code --- ---
 
-  -- Variables, with two arguments for name and value, are combined in a variable list to use as environment --
-  -- could also change later to BoolVar, IntVar, etc for more variable types
-  data Variable : Set where
-    NatVar : String → Nat → Variable
-    PtrVar : String → Nat → Variable
-
-  -- Used for passing an identifier to functions for the type of the variable being used (so we can pass VarType and String instead of two Strings)
-  -- Fully written out here so it's distinguished from the Nat or Ptr types/identifiers used elsewhere
+  -- Variable type identifier
+  -- Used both in the variable as well as other functions
   data VarType : Set where
     Natural : VarType
     Pointer : VarType
+
+
+  -- Variables, with two arguments for name and value, are combined in a variable list to use as environment --
+  -- could also change later to BoolVar, IntVar, etc for more variable types
+  data Variable : Set where
+    Var : VarType → String → Nat → Variable
 
   data Heap : Set where
     [h] : Heap
@@ -96,7 +96,7 @@ module miCro where
   -- Helper function to return value from a given heap address --
   readHeap : Heap → Nat → Nat
   readHeap [h] x = zero
-  readHeap (n :H: [h]) zero = n
+  readHeap (n :H: h) zero = n
   readHeap (n :H: h) (suc x) = readHeap h x
 
   -- Expressions, for Assigning Variables --
@@ -128,27 +128,30 @@ module miCro where
     IfElse : Cnd → Stmt → Stmt → Stmt
     While : Cnd → Stmt → Stmt
     AssignVar : VarType → String → Exp → Stmt
+    AssignHeap : Exp → Exp → Stmt --First exp is address, second is value (could also be nat → exp...?)
+    AddHeap : Exp → Stmt -- Adds the value to the end of the current heap
     No-op : Stmt
 
   --- --- Evaluation functions, including eval (applied to programs) and it's helper functions --- ---
-
+  
   --Reduce Exp, to simplify Exp to const values --
+  {-# TERMINATING #-} -- For some reason adding heaps has broken the termination on this, even though it's basically still the same
   eval : RAM → Exp → Nat
   eval ([e] & h) (readVar str)  = zero -- If we can't find the variable we're trying to read, just return zero
-  eval (((NatVar str2 x) :e: v) & h) (readVar str1) with primStringEquality str1 str2
+  eval (((Var Natural str2 x) :e: v) & h) (readVar str1) with primStringEquality str1 str2
   ...                                             | true = x
-  ...                                             | false = eval v (readVar str1)
+  ...                                             | false = eval (v & h) (readVar str1)
   -- Would like to use some OR attached to the above With to get rid of these extra lines, but can't find out how to currently
-  eval (((PtrVar str2 x) :e: v) & h) (readVar str1) with primStringEquality str1 str2
+  eval (((Var Pointer str2 x) :e: v) & h) (readVar str1) with primStringEquality str1 str2
   ...                                             | true = (readHeap h x)
-  ...                                             | false = eval v (readVar str1)
+  ...                                             | false = eval (v & h) (readVar str1)
   eval ([e] & h) (readVar++ str) = 1 --I don't know if this makes any sense; perhaps still return zero since var can't be found?
-  eval (((NatVar str2 x) :e: v) & h) (readVar++ str1) with primStringEquality str1 str2
+  eval (((Var Natural str2 x) :e: v) & h) (readVar++ str1) with primStringEquality str1 str2
   ...                                             | true = suc x
-  ...                                             | false = eval v (readVar++ str1)
-  eval (((PtrVar str2 x) :e: v) & h) (readVar++ str1) with primStringEquality str1 str2
+  ...                                             | false = eval (v & h) (readVar++ str1)
+  eval (((Var Pointer str2 x) :e: v) & h) (readVar++ str1) with primStringEquality str1 str2
   ...                                             | true = suc (readHeap h x)
-  ...                                             | false = eval v (readVar++ str1)
+  ...                                             | false = eval (v & h) (readVar++ str1)
   eval r (const n) = n
   eval r (plus e1 e2) = (eval r e1) + (eval r e2)
   eval r (minus e1 e2) = (eval r e1) - (eval r e2)
@@ -189,61 +192,73 @@ module miCro where
 
   -- Update function, to write variables in environment --
   -- Heap not needed for this function, so I'm sticking with old implementation of env only
-  -- Pattern matching again a little messy here; not sure how to best clean up
-  update : Env → VarType → String → Nat → RAM
-  update [e] Natural str x = ((NatVar str x) :e: [e])
-  update [e] Pointer str x = ((PtrVar str x) :e: [e])
-  update ((NatVar str1 n) :e: v) Natural str2 x with primStringEquality str1 str2
-  ... | true = ((NatVar str1 x) :e: v)
-  ... | false = ((t str1 n) :e: (update v Natural str2 x))
-  update ((NatVar str1 n) :e: v) Pointer str2 x with primStringEquality str1 str2
-  ... | true = ((PtrVar str1 x) :e: v)
-  ... | false = ((NatVar str1 n) :e: (update v Pointer str2 x))
+  -- Will apply the given type only if var is not found in env; otherwise old type remains
+  update : Env → VarType → String → Nat → Env
+  update [e] type str x = ((Var type str x) :e: [e])
+  update ((Var type1 str1 n) :e: v) type2 str2 x with primStringEquality str1 str2
+  ... | true = ((Var type1 str1 x) :e: v)
+  ... | false = ((Var type1 str1 n) :e: (update v type2 str2 x))
 
-  -- Write function, to write values into the heap
+  -- Write function, to write values into the heap (again, order is address then value
+  write : Heap → Nat → Nat → Heap
+  write (n :H: h) zero x = (x :H: h)
+  write (n :H: h) (suc a) x = write h a x
+  write [h] zero x = (x :H: [h])
+  write [h] (suc a) x = (zero :H: (write [h] a x))
+
+  -- Add to heap function, appending the nat to the end of the heap
+  addToHeap : Heap → Nat → Heap
+  addToHeap [h] x = (x :H: [h])
+  addToHeap (n :H: h) x = addToHeap h x 
+  
 
   -- Evaluation function, taking value of variable and code for input, producing value of variable at the end --
   {-# TERMINATING #-} --Not actually guaranteed to terminate, because of while; need to be careful writing programs or it will basically freeze my computer
-  exec : Env → Stmt → Env
-  exec v (Seq s1 s2) = exec (exec v s1) s2
-  exec v (If c s) with (check v c)
-  ...                 | true = exec v s
-  ...                 | false = v
-  exec v (IfElse c s1 s2) with (check v c)
-  ...                         | true = exec v s1
-  ...                         | false = exec v s2
-  exec v (While c s) with (check v c)
-  ... | false = v
-  ... | true = exec v (Seq s (While c s))
-  exec v (AssignVar str e) = update v str (eval v e)
-  exec v No-op = v
+  exec : RAM → Stmt → RAM
+  exec r (Seq s1 s2) = exec (exec r s1) s2
+  exec r (If c s) with (check r c)
+  ...                 | true = exec r s
+  ...                 | false = r
+  exec r (IfElse c s1 s2) with (check r c)
+  ...                         | true = exec r s1
+  ...                         | false = exec r s2
+  exec r (While c s) with (check r c)
+  ... | false = r
+  ... | true = exec r (Seq s (While c s))
+  exec (v & h) (AssignVar type str e) = (update v type str (eval (v & h) e)) & h
+  exec (v & h) (AssignHeap e1 e2) = v & (write h (eval (v & h) e1) (eval (v & h) e2))
+  exec (v & h) (AddHeap e) = v & (addToHeap h (eval (v & h) e))
+  exec r No-op = r
 
   --- --- Test Programs --- ---
   -- Everything has to be written on one line I think since agda pays attention to white space --
   -- form is exec (code) (init x) ≡ expected outcome --
   -- Everything is nicely reflexive; intrinsic proofs I guess based on the typing? --
   
-  test1 : ∀ ( n : Nat ) → exec  ((Var "X" n) :e: [e]) (Seq (AssignVar "X" (const 1)) (AssignVar "X" (readVar++ "X"))) ≡ ((Var "X" 2) :e: [e])
+  test1 : ∀ ( n : Nat ) → exec  (((Var Natural "X" n) :e: [e]) & [h]) (Seq (AssignVar Natural "X" (const 1)) (AssignVar Natural "X" (readVar++ "X"))) ≡ ((Var Natural "X" 2) :e: [e]) & [h]
   test1 n = refl
 
-  test2 : exec [e] (If ((readVar "X") == (const 0)) (AssignVar "X" (plus (readVar "X") (const 1)))) ≡ ((Var "X" 1) :e: [e])
+  test2 : exec ([e] & [h]) (If ((readVar "X") == (const 0)) (AssignVar Natural "X" (plus (readVar "X") (const 1)))) ≡ ((Var Natural "X" 1) :e: [e]) & [h]
   test2 = refl
 
-  test3 : exec [e] (While ((readVar "X") == (const 0)) (AssignVar "X" (plus (readVar "X") (const 1)))) ≡ ((Var "X" 1) :e: [e])
+  test3 : exec ([e] & [h]) (While ((readVar "X") == (const 0)) (AssignVar Natural "X" (plus (readVar "X") (const 1)))) ≡ ((Var Natural "X" 1) :e: [e]) & [h]
   test3 = refl
 
 
-  whileTest : exec [e] (While ((readVar "X") < (const 10)) (AssignVar "X" (plus (const 1) (readVar "X")))) ≡ ((Var "X" 10) :e: [e])
+  whileTest : exec ([e] & [h]) (While ((readVar "X") < (const 10)) (AssignVar Natural "X" (plus (const 1) (readVar "X")))) ≡ ((Var Natural "X" 10) :e: [e]) & [h]
   whileTest = refl 
 
   -- Can't do much without multiple vars, but this repeatedly X as long as it is less than or equal to 32 --
-  greatestLesserPower : exec ((Var "X" 2) :e: [e]) (While ((readVar "X") <= (const 32)) (AssignVar "X" (times (readVar "X") (readVar "X")))) ≡ ((Var "X" 256) :e: [e])
+  greatestLesserPower : exec (((Var Natural "X" 2) :e: [e]) & [h]) (While ((readVar "X") <= (const 32)) (AssignVar Natural "X" (times (readVar "X") (readVar "X")))) ≡ ((Var Natural "X" 256) :e: [e]) & [h]
   greatestLesserPower = refl
 
   -- Test with multiple Variables, based on Hoare Logic pdf from UW --
 
-  UWEx1 : exec [e] (While ((readVar "k") <= (const 4)) (Seq (AssignVar "sum" (plus (readVar "k") (readVar "sum"))) (AssignVar "k" (readVar++ "k")))) ≡ ((Var "sum" 10) :e: (Var "k" 5) :e: [e])
+  UWEx1 : exec ([e] & [h]) (While ((readVar "k") <= (const 4)) (Seq (AssignVar Natural "sum" (plus (readVar "k") (readVar "sum"))) (AssignVar Natural "k" (readVar++ "k")))) ≡ ((Var Natural "sum" 10) :e: (Var Natural "k" 5) :e: [e]) & [h]
   UWEx1 = refl
 
+  -- Heap Test: Basic read/write from heap
+  heapTest1 : exec ([e] & [h]) (Seq (AssignVar Pointer "x" (const 3)) (Seq (AssignHeap (const 3) (const 10)) (AssignVar Natural "y" (readVar "x")) )) ≡ ((Var Pointer "x" 3) :e: (Var Natural "y" 10) :e: [e]) & (0 :H: 0 :H: 0 :H: 10 :H: [h])
+  heapTest1 = refl
 -- To Add: Rules on equivalence of Env; if Env A contains Env B, then A ≡ B? or some similar relation, so that rhs of above statement/proofs can be condensed to only 1 variable --
 
