@@ -63,8 +63,9 @@ module miCro where
 
   --- --- Syntax part of miCro, these (along with integers) are used to actually write the code --- ---
 
+  
   -- Variable type identifier
-  -- Used both in the variable as well as other functions
+  -- Used in the variable but removed from other functions since pointers and nats are identical. Keeping it in in case it's useful later
   data VarType : Set where
     Natural : VarType
     Pointer : VarType
@@ -99,10 +100,17 @@ module miCro where
   readHeap (n :H: h) zero = n
   readHeap (n :H: h) (suc x) = readHeap h x
 
+  -- Helper function to return the total spaces in the heap
+  heapSize : Heap → Nat
+  heapSize [h] = zero
+  heapSize (n :H: h) = suc (heapSize h)
+
   -- Expressions, for Assigning Variables --
   data Exp : Set where
     readVar : String → Exp
     readVar++ : String → Exp
+    derefVar : String → Exp
+    readAddress : Exp → Exp
     plus : Exp → Exp → Exp
     const : Nat → Exp
     minus : Exp → Exp → Exp
@@ -128,8 +136,8 @@ module miCro where
     IfElse : Cnd → Stmt → Stmt → Stmt
     While : Cnd → Stmt → Stmt
     AssignVar : VarType → String → Exp → Stmt
-    AssignHeap : Exp → Exp → Stmt --First exp is address, second is value (could also be nat → exp...?)
-    AddHeap : Exp → Stmt -- Adds the value to the end of the current heap
+    WriteHeap : Exp → Exp → Stmt --First exp is address, second is value (could also be nat → exp...?)
+    AssignPtr : String → Exp → Stmt -- Adds the value to the end of the current heap and makes a ptr var to it
     No-op : Stmt
 
   --- --- Evaluation functions, including eval (applied to programs) and it's helper functions --- ---
@@ -138,20 +146,18 @@ module miCro where
   {-# TERMINATING #-} -- For some reason adding heaps has broken the termination on this, even though it's basically still the same
   eval : RAM → Exp → Nat
   eval ([e] & h) (readVar str)  = zero -- If we can't find the variable we're trying to read, just return zero
-  eval (((Var Natural str2 x) :e: v) & h) (readVar str1) with primStringEquality str1 str2
+  eval (((Var type str2 x) :e: v) & h) (readVar str1) with primStringEquality str1 str2
   ...                                             | true = x
   ...                                             | false = eval (v & h) (readVar str1)
-  -- Would like to use some OR attached to the above With to get rid of these extra lines, but can't find out how to currently
-  eval (((Var Pointer str2 x) :e: v) & h) (readVar str1) with primStringEquality str1 str2
-  ...                                             | true = (readHeap h x)
-  ...                                             | false = eval (v & h) (readVar str1)
   eval ([e] & h) (readVar++ str) = 1 --I don't know if this makes any sense; perhaps still return zero since var can't be found?
-  eval (((Var Natural str2 x) :e: v) & h) (readVar++ str1) with primStringEquality str1 str2
+  eval (((Var type str2 x) :e: v) & h) (readVar++ str1) with primStringEquality str1 str2
   ...                                             | true = suc x
   ...                                             | false = eval (v & h) (readVar++ str1)
-  eval (((Var Pointer str2 x) :e: v) & h) (readVar++ str1) with primStringEquality str1 str2
-  ...                                             | true = suc (readHeap h x)
-  ...                                             | false = eval (v & h) (readVar++ str1)
+  eval ([e] & h) (derefVar str) = zero
+  eval (((Var type str1 x) :e: v) & h) (derefVar str2) with primStringEquality str1 str2
+  ...                                             | true = (readHeap h x)
+  ...                                             | false = eval (v & h) (derefVar str2)
+  eval (env & h) (readAddress e) = (readHeap h (eval (env & h) e))
   eval r (const n) = n
   eval r (plus e1 e2) = (eval r e1) + (eval r e2)
   eval r (minus e1 e2) = (eval r e1) - (eval r e2)
@@ -226,8 +232,8 @@ module miCro where
   ... | false = r
   ... | true = exec r (Seq s (While c s))
   exec (v & h) (AssignVar type str e) = (update v type str (eval (v & h) e)) & h
-  exec (v & h) (AssignHeap e1 e2) = v & (write h (eval (v & h) e1) (eval (v & h) e2))
-  exec (v & h) (AddHeap e) = v & (addToHeap h (eval (v & h) e))
+  exec (v & h) (WriteHeap e1 e2) = v & (write h (eval (v & h) e1) (eval (v & h) e2))
+  exec (v & h) (AssignPtr str e) = (update v Pointer str ((heapSize h) + 1)) & (addToHeap h (eval (v & h) e)) --Using last + 1 here since the var gets assigned before the heap data is written
   exec r No-op = r
 
   --- --- Test Programs --- ---
@@ -257,8 +263,8 @@ module miCro where
   UWEx1 : exec ([e] & [h]) (While ((readVar "k") <= (const 4)) (Seq (AssignVar Natural "sum" (plus (readVar "k") (readVar "sum"))) (AssignVar Natural "k" (readVar++ "k")))) ≡ ((Var Natural "sum" 10) :e: (Var Natural "k" 5) :e: [e]) & [h]
   UWEx1 = refl
 
-  -- Heap Test: Basic read/write from heap
-  heapTest1 : exec ([e] & [h]) (Seq (AssignVar Pointer "x" (const 3)) (Seq (AssignHeap (const 3) (const 10)) (AssignVar Natural "y" (readVar "x")) )) ≡ ((Var Pointer "x" 3) :e: (Var Natural "y" 10) :e: [e]) & (0 :H: 0 :H: 0 :H: 10 :H: [h])
+  -- Heap Test: Basic read/write from heap; currently not working
+  heapTest1 : exec ([e] & [h]) (Seq (AssignPtr "x" (const 10)) (AssignVar Natural "y" (derefVar "x"))) ≡ ((Var Pointer "x" 1) :e: (Var Natural "y" 0) :e: [e]) & (10 :H: [h])
   heapTest1 = refl
 -- To Add: Rules on equivalence of Env; if Env A contains Env B, then A ≡ B? or some similar relation, so that rhs of above statement/proofs can be condensed to only 1 variable --
 

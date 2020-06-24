@@ -129,6 +129,8 @@ module miCro_parser where
   parse_plus_rest : Exp → Tokens → Exp
   parse_minus_rest : Exp → Tokens → Exp
   parse_mult : Tokens → Exp
+  parse_address : Tokens → Exp
+  parse_parens_exp : Tokens → Exp
   parse_term : Tokens → Exp
 
   parse_exp tkns = parse_pm tkns
@@ -148,10 +150,15 @@ module miCro_parser where
   ... | none = (minus exp (parse_exp tkns))
 
   parse_mult tkns with token_search tkns "*"
-  ... | true = times (parse_term (splitL tkns "*")) (parse_mult (splitR tkns "*"))
-  ... | false = parse_term tkns
+  ... | true = times (parse_address (splitL tkns "*")) (parse_mult (splitR tkns "*"))
+  ... | false = parse_address tkns
 
-  parse_term ( "(" :t: tkns) = parse_exp (splitL tkns ")")
+  parse_address ("[" :t: tkns) = (readAddress (parse_exp (splitL tkns "]")))
+  parse_address tkns = parse_parens_exp tkns
+
+  parse_parens_exp ( "(" :t: tkns) = parse_exp (splitL tkns ")")
+  parse_parens_exp tkns = parse_term tkns
+
   parse_term (str :t: [t]) with is_number (primStringToList str) -- At this point we should either have a number or a var; otherwise there's been some error
   ... | true = (const (string_to_nat str))
   ... | false = (readVar str) 
@@ -202,21 +209,23 @@ module miCro_parser where
   parse_stmt ("if" :t: ("(" :t: tkns)) = Seq (If (parse_condition (splitL tkns ")")) (parse_stmt (splitR (splitL tkns "}") "{"))) (parse_stmt (splitR tkns ";"))
   parse_stmt ("ifElse" :t: ( "("  :t: tkns)) = Seq (IfElse (parse_condition (splitL tkns ")")) (parse_stmt (splitR (splitL tkns "}") "{")) (parse_stmt (splitR (splitL (splitR tkns "}") "}") "{"))) (parse_stmt (splitR tkns ";"))
   parse_stmt ("while" :t:( "(" :t: tkns)) =  Seq (While (parse_condition (splitL tkns ")")) (parse_stmt (splitR (splitL tkns "}") "{"))) (parse_stmt (splitR (splitR tkns "}") ";"))
-  parse_stmt (str :t: ( "=" :t: tkns)) = Seq (AssignVar str (parse_exp (splitL tkns ";"))) (parse_stmt (splitR tkns ";"))
+  parse_stmt ("ptr" :t: str :t: "=" :t: tkns) = Seq (AssignPtr str (parse_exp (splitL tkns ";"))) (parse_stmt (splitR tkns ";"))
+  parse_stmt ("[" :t: tkns) = Seq (WriteHeap (parse_exp (splitL tkns "]")) (parse_exp (splitL (splitR tkns "=") ";"))) (parse_stmt (splitR tkns ";"))
+  parse_stmt (str :t: ( "=" :t: tkns)) = Seq (AssignVar Natural str (parse_exp (splitL tkns ";"))) (parse_stmt (splitR tkns ";"))
   parse_stmt error = No-op
 
   -- Environment Parse Function; parses the INIT variables attached to the beginning of a program; assumes it's passed a single proper init line
   parse_env : Tokens → Env
   parse_env [t] = [e]
   parse_env (str :t: ("=" :t: (num :t: tkns))) with is_number (primStringToList num)
-  ... | true = ((Var str (string_to_nat num)) :e: (parse_env tkns))
+  ... | true = ((Var Natural str (string_to_nat num)) :e: (parse_env tkns))
   ... | false = parse_env tkns
   parse_env (other :t: tkns) = parse_env tkns
 
   -- Main function; parses the environment and program statements, then runs the whole thing and returns end environment
-  run : Tokens → Env
-  run ("INIT" :t: tkns) = exec (parse_env (splitL tkns ";")) (parse_stmt (splitR tkns ";"))
-  run error = [e]
+  run : Tokens → RAM
+  run ("INIT" :t: tkns) = exec ((parse_env (splitL tkns ";")) & [h]) (parse_stmt (splitR tkns ";"))
+  run error = [e] & [h]
 
 --- Extra Notes ---
 -- No ++ is allowed, since right now that reads as a plus operator (solution would be to make it process to "++":t:tkns)

@@ -80,23 +80,23 @@ parseTest4 = refl
 -- Tokens 6 is x = 1; x = x + 1;
 tokens6 = "x" :t: "=" :t: "1" :t: ";" :t: "x" :t: "=" :t: "x" :t: "+" :t: "1" :t: [t]
 
-parseTest5 : (parse_stmt tokens6) ≡ (Seq (AssignVar "x" (const 1)) (Seq (AssignVar "x" (plus (readVar "x") (const 1))) No-op) )
+parseTest5 : (parse_stmt tokens6) ≡ (Seq (AssignVar Natural "x" (const 1)) (Seq (AssignVar Natural "x" (plus (readVar "x") (const 1))) No-op) )
 parseTest5 = refl
 
 -- Tokens 7 is "(x = 2, y = 3)"
 tokens7 = "(" :t: "x" :t: "=" :t: "2" :t: "," :t: "y" :t: "=" :t: "3" :t: ")" :t: [t]
 
-parseTest6 : (parse_env tokens7) ≡ (Var "x" 2) :e: (Var "y" 3) :e: [e]
+parseTest6 : (parse_env tokens7) ≡ (Var Natural "x" 2) :e: (Var Natural "y" 3) :e: [e]
 parseTest6 = refl
 
 -- Tokens 8 is "INIT (x=2, y=3); x = x + 1;"
 tokens8 = "INIT" :t: "(" :t: "x" :t: "=" :t: "2" :t: "," :t: "y" :t: "=" :t: "3" :t: ")" :t: ";" :t: "x" :t: "=" :t: "x" :t: "+" :t: "1" :t: ";" :t: [t]
 
-runTest : (run tokens8) ≡ (Var "x" 3) :e: (Var "y" 3) :e: [e]
+runTest : (run tokens8) ≡ ((Var Natural "x" 3) :e: (Var Natural "y" 3) :e: [e]) & [h]
 runTest = refl
 
 -- Tokens 9 is "while (y < 9) {x = x + y; y = y + 2;};"
 tokens9 = "while" :t: "(" :t: "y" :t: "<" :t: "9" :t: ")" :t: "{" :t: "x" :t: "=" :t: "x" :t: "+" :t: "y" :t: ";" :t: "y" :t: "=" :t: "y" :t: "+" :t: "2" :t: ";" :t: "}" :t: ";" :t: [t]
 
-parseTest7 : (parse_stmt tokens9) ≡ Seq (While ((readVar "y") < (const 9)) (Seq (AssignVar "x" (plus (readVar "x") (readVar "y"))) (Seq (AssignVar "y" (plus (readVar "y") (const 2))) (No-op)) )) No-op
+parseTest7 : (parse_stmt tokens9) ≡ Seq (While ((readVar "y") < (const 9)) (Seq (AssignVar Natural "x" (plus (readVar "x") (readVar "y"))) (Seq (AssignVar Natural "y" (plus (readVar "y") (const 2))) (No-op)) )) No-op
 parseTest7 = refl
