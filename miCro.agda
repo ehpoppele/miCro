@@ -208,14 +208,14 @@ module miCro where
   -- Write function, to write values into the heap (again, order is address then value
   write : Heap → Nat → Nat → Heap
   write (n :H: h) zero x = (x :H: h)
-  write (n :H: h) (suc a) x = write h a x
+  write (n :H: h) (suc a) x = n :H: (write h a x)
   write [h] zero x = (x :H: [h])
   write [h] (suc a) x = (zero :H: (write [h] a x))
 
   -- Add to heap function, appending the nat to the end of the heap
   addToHeap : Heap → Nat → Heap
   addToHeap [h] x = (x :H: [h])
-  addToHeap (n :H: h) x = addToHeap h x 
+  addToHeap (n :H: h) x = n :H: (addToHeap h x) 
   
 
   -- Evaluation function, taking value of variable and code for input, producing value of variable at the end --
@@ -233,7 +233,7 @@ module miCro where
   ... | true = exec r (Seq s (While c s))
   exec (v & h) (AssignVar type str e) = (update v type str (eval (v & h) e)) & h
   exec (v & h) (WriteHeap e1 e2) = v & (write h (eval (v & h) e1) (eval (v & h) e2))
-  exec (v & h) (AssignPtr str e) = (update v Pointer str ((heapSize h) + 1)) & (addToHeap h (eval (v & h) e)) --Using last + 1 here since the var gets assigned before the heap data is written
+  exec (v & h) (AssignPtr str e) = (update v Pointer str (heapSize h)) & (addToHeap h (eval (v & h) e))
   exec r No-op = r
 
   --- --- Test Programs --- ---
@@ -264,7 +264,7 @@ module miCro where
   UWEx1 = refl
 
   -- Heap Test: Basic read/write from heap; currently not working
-  heapTest1 : exec ([e] & [h]) (Seq (AssignPtr "x" (const 10)) (AssignVar Natural "y" (derefVar "x"))) ≡ ((Var Pointer "x" 1) :e: (Var Natural "y" 0) :e: [e]) & (10 :H: [h])
+  heapTest1 : exec ([e] & [h]) (Seq (AssignPtr "x" (const 10)) (AssignVar Natural "y" (derefVar "x"))) ≡ ((Var Pointer "x" 0) :e: (Var Natural "y" 10) :e: [e]) & (10 :H: [h])
   heapTest1 = refl
 -- To Add: Rules on equivalence of Env; if Env A contains Env B, then A ≡ B? or some similar relation, so that rhs of above statement/proofs can be condensed to only 1 variable --
 

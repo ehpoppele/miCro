@@ -58,12 +58,14 @@ module miCro_parser where
   
   splitL [t] str = [t]
   splitL ( "(" :t: tkns) str = "(" :t: ((splitL tkns ")" ) +t+ (")" :t: (splitL (splitR tkns ")" ) str)))
+  splitL ( "{" :t: tkns) str = "{" :t: ((splitL tkns "}" ) +t+ ("}" :t: (splitL (splitR tkns "}" ) str)))
   splitL (str1 :t: tkns) str2 with primStringEquality str1 str2
   ...                           | true = [t]
   ...                           | false = str1 :t: (splitL tkns str2)
 
   splitR [t] str = [t]
   splitR ( "(" :t: tkns) str = splitR (splitR tkns ")" ) str
+  splitR ( "{" :t: tkns) str = splitR (splitR tkns "}" ) str
   splitR (str1 :t: tkns) str2 with primStringEquality str1 str2
   ...                           | true = tkns
   ...                           | false = splitR tkns str2
@@ -162,7 +164,8 @@ module miCro_parser where
   parse_term (str :t: [t]) with is_number (primStringToList str) -- At this point we should either have a number or a var; otherwise there's been some error
   ... | true = (const (string_to_nat str))
   ... | false = (readVar str) 
-  parse_term tkns = (const 404) -- We can't raise an error, but we should never reach here, since this means something went awry. 
+  parse_term [t] = (const 99) -- Unexpected EOF; token stream ended before it should have
+  parse_term tkns = (const 400) -- Bad syntax; error on parsing leads to this
 
   {-# TERMINATING #-} --Note: Will need to add ability to process literal booleans (t/f) later, unless not needed
   parse_condition : Tokens → Cnd
@@ -206,9 +209,9 @@ module miCro_parser where
   {-# TERMINATING #-}
   parse_stmt : Tokens → Stmt
   parse_stmt [t] = No-op
-  parse_stmt ("if" :t: ("(" :t: tkns)) = Seq (If (parse_condition (splitL tkns ")")) (parse_stmt (splitR (splitL tkns "}") "{"))) (parse_stmt (splitR tkns ";"))
-  parse_stmt ("ifElse" :t: ( "("  :t: tkns)) = Seq (IfElse (parse_condition (splitL tkns ")")) (parse_stmt (splitR (splitL tkns "}") "{")) (parse_stmt (splitR (splitL (splitR tkns "}") "}") "{"))) (parse_stmt (splitR tkns ";"))
-  parse_stmt ("while" :t:( "(" :t: tkns)) =  Seq (While (parse_condition (splitL tkns ")")) (parse_stmt (splitR (splitL tkns "}") "{"))) (parse_stmt (splitR (splitR tkns "}") ";"))
+  parse_stmt ("if" :t: ("(" :t: tkns)) = Seq (If (parse_condition (splitL tkns ")")) (parse_stmt (splitL (splitR tkns "{") "}"))) (parse_stmt (splitR tkns ";"))
+  parse_stmt ("ifElse" :t: ( "("  :t: tkns)) = Seq (IfElse (parse_condition (splitL tkns ")")) (parse_stmt (splitL (splitR tkns "{") "}")) (parse_stmt (splitL (splitR (splitR tkns "}") "{") "}"))) (parse_stmt (splitR tkns ";"))
+  parse_stmt ("while" :t:( "(" :t: tkns)) =  Seq (While (parse_condition (splitL tkns ")")) (parse_stmt (splitL (splitR tkns "{") "}"))) (parse_stmt (splitR tkns ";"))
   parse_stmt ("ptr" :t: str :t: "=" :t: tkns) = Seq (AssignPtr str (parse_exp (splitL tkns ";"))) (parse_stmt (splitR tkns ";"))
   parse_stmt ("[" :t: tkns) = Seq (WriteHeap (parse_exp (splitL tkns "]")) (parse_exp (splitL (splitR tkns "=") ";"))) (parse_stmt (splitR tkns ";"))
   parse_stmt (str :t: ( "=" :t: tkns)) = Seq (AssignVar Natural str (parse_exp (splitL tkns ";"))) (parse_stmt (splitR tkns ";"))

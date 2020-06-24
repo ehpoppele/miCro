@@ -11,7 +11,7 @@ sum = "INIT (x = 0);
         y = y + x;
        };"
 
-microTest1 : (run (tokenize sum)) ≡ ((Var "x" 10) :e: (Var "y" 55) :e: [e])
+microTest1 : (run (tokenize sum)) ≡ ((Var Natural "x" 10) :e: (Var Natural "y" 55) :e: [e]) & _
 microTest1 = refl
 
 greatestLesserSquare = "
@@ -24,5 +24,5 @@ while ((i * i) < input) {
   }
 "
 
-microTest2 : (run (tokenize greatestLesserSquare)) ≡ (Var "input" 65) :e: (Var "square" 64) :e: (Var "i" 9) :e: [e]
+microTest2 : (run (tokenize greatestLesserSquare)) ≡ ((Var Natural "input" 65) :e: (Var Natural "square" 64) :e: (Var Natural "i" 9) :e: [e]) & _
 microTest2 = refl
