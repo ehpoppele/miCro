@@ -100,3 +100,15 @@ tokens9 = "while" :t: "(" :t: "y" :t: "<" :t: "9" :t: ")" :t: "{" :t: "x" :t: "=
 
 parseTest7 : (parse_stmt tokens9) ≡ Seq (While ((readVar "y") < (const 9)) (Seq (AssignVar Natural "x" (plus (readVar "x") (readVar "y"))) (Seq (AssignVar Natural "y" (plus (readVar "y") (const 2))) (No-op)) )) No-op
 parseTest7 = refl
+
+-- tokens 10 is "if (x < 10) {while (x > 7) {x = x - 1;};};"
+tokens10 = "if" :t: "(" :t: "x" :t: "<" :t: "10" :t: ")" :t: "{" :t: "while" :t: "(" :t: "x" :t: ">" :t: "7" :t: ")" :t: "{" :t: "x" :t: "=" :t: "x" :t: "-" :t: "1" :t: ";" :t: "}" :t: ";" :t: "}" :t: ";"  :t: [t]
+
+bracketsTest1 : (parse_stmt tokens10) ≡ Seq (If ((readVar "x") < (const 10)) (Seq (While ((readVar "x") > (const 7)) (Seq (AssignVar Natural "x" (minus (readVar "x") (const 1))) No-op)) No-op)) No-op
+bracketsTest1 = refl
+
+-- Tokens 11 is "y = [1 + 2]"
+tokens11 = "y" :t: "=" :t: "[" :t: "1" :t: "+" :t: "2" :t: "]" :t: [t]
+
+heapTest2 : (parse_stmt tokens11) ≡ Seq (AssignVar Natural "y" (readAddress (plus (const 1) (const 2)))) No-op
+heapTest2 = refl

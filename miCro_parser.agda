@@ -59,6 +59,7 @@ module miCro_parser where
   splitL [t] str = [t]
   splitL ( "(" :t: tkns) str = "(" :t: ((splitL tkns ")" ) +t+ (")" :t: (splitL (splitR tkns ")" ) str)))
   splitL ( "{" :t: tkns) str = "{" :t: ((splitL tkns "}" ) +t+ ("}" :t: (splitL (splitR tkns "}" ) str)))
+  splitL ( "[" :t: tkns) str = "[" :t: ((splitL tkns "]" ) +t+ ("]" :t: (splitL (splitR tkns "]" ) str)))
   splitL (str1 :t: tkns) str2 with primStringEquality str1 str2
   ...                           | true = [t]
   ...                           | false = str1 :t: (splitL tkns str2)
@@ -66,16 +67,26 @@ module miCro_parser where
   splitR [t] str = [t]
   splitR ( "(" :t: tkns) str = splitR (splitR tkns ")" ) str
   splitR ( "{" :t: tkns) str = splitR (splitR tkns "}" ) str
+  splitR ( "[" :t: tkns) str = splitR (splitR tkns "]" ) str
   splitR (str1 :t: tkns) str2 with primStringEquality str1 str2
   ...                           | true = tkns
   ...                           | false = splitR tkns str2
 
-  -- Token Search : searches the tokens for the first instance of given string that is not in parentheses
+  --And another helper function for curly brackets, since split needs to treat them like parens but we can't remove them as easily (since we use "(" :t: tkns and cant do "(" tkns "{" etc)
+  trimTo : Tokens → String → Tokens
+  trimTo [t] str = [t]
+  trimTo (str1 :t: tkns) str2 with primStringEquality str1 str2
+  ... | true = tkns
+  ... | false = trimTo tkns str2
+
+  -- Token Search : searches the tokens for the first instance of given string that is not in parentheses/brackets/braces
   -- Returns true if one is found, false otherwise
   {-# TERMINATING #-}
   token_search : Tokens → String → Bool
   token_search [t] str = false
   token_search ("(" :t: tkns) str = token_search (splitR tkns ")" ) str
+  token_search ("{" :t: tkns) str = token_search (splitR tkns "}" ) str
+  token_search ("[" :t: tkns) str = token_search (splitR tkns "]" ) str
   token_search (str1 :t: tkns) str2 with primStringEquality str1 str2
   ...                                 | true = true
   ...                                 | false = token_search tkns str2
@@ -86,6 +97,8 @@ module miCro_parser where
   comp_token_search : Tokens → String
   comp_token_search  [t] = "none"
   comp_token_search ("(" :t: tkns) = comp_token_search (splitR tkns ")" )
+  comp_token_search ("{" :t: tkns) = comp_token_search (splitR tkns "}" )
+  comp_token_search ("[" :t: tkns) = comp_token_search (splitR tkns "]" )
   comp_token_search ( "==" :t: tkns) = "=="
   comp_token_search ( "!=" :t: tkns) = ">="
   comp_token_search ( "<=" :t: tkns) = "<="
@@ -99,6 +112,8 @@ module miCro_parser where
   pm_search : Tokens → String
   pm_search [t] = "none"
   pm_search ("(" :t: tkns) = pm_search (splitR tkns ")" )
+  pm_search ("{" :t: tkns) = pm_search (splitR tkns "}" )
+  pm_search ("[" :t: tkns) = pm_search (splitR tkns "]" )
   pm_search ("+" :t: tkns) = "+"
   pm_search ("-" :t: tks) = "-"
   pm_search (str :t: tkns) = pm_search tkns
@@ -209,9 +224,9 @@ module miCro_parser where
   {-# TERMINATING #-}
   parse_stmt : Tokens → Stmt
   parse_stmt [t] = No-op
-  parse_stmt ("if" :t: ("(" :t: tkns)) = Seq (If (parse_condition (splitL tkns ")")) (parse_stmt (splitL (splitR tkns "{") "}"))) (parse_stmt (splitR tkns ";"))
-  parse_stmt ("ifElse" :t: ( "("  :t: tkns)) = Seq (IfElse (parse_condition (splitL tkns ")")) (parse_stmt (splitL (splitR tkns "{") "}")) (parse_stmt (splitL (splitR (splitR tkns "}") "{") "}"))) (parse_stmt (splitR tkns ";"))
-  parse_stmt ("while" :t:( "(" :t: tkns)) =  Seq (While (parse_condition (splitL tkns ")")) (parse_stmt (splitL (splitR tkns "{") "}"))) (parse_stmt (splitR tkns ";"))
+  parse_stmt ("if" :t: ("(" :t: tkns)) = Seq (If (parse_condition (splitL tkns ")")) (parse_stmt (splitL (trimTo tkns "{") "}"))) (parse_stmt (splitR tkns ";"))
+  parse_stmt ("ifElse" :t: ( "("  :t: tkns)) = Seq (IfElse (parse_condition (splitL tkns ")")) (parse_stmt (splitL (trimTo tkns "{") "}")) (parse_stmt (splitL (splitR (trimTo tkns "}") "{") "}"))) (parse_stmt (splitR tkns ";"))
+  parse_stmt ("while" :t:( "(" :t: tkns)) =  Seq (While (parse_condition (splitL tkns ")")) (parse_stmt (splitL (trimTo tkns "{") "}"))) (parse_stmt (splitR tkns ";"))
   parse_stmt ("ptr" :t: str :t: "=" :t: tkns) = Seq (AssignPtr str (parse_exp (splitL tkns ";"))) (parse_stmt (splitR tkns ";"))
   parse_stmt ("[" :t: tkns) = Seq (WriteHeap (parse_exp (splitL tkns "]")) (parse_exp (splitL (splitR tkns "=") ";"))) (parse_stmt (splitR tkns ";"))
   parse_stmt (str :t: ( "=" :t: tkns)) = Seq (AssignVar Natural str (parse_exp (splitL tkns ";"))) (parse_stmt (splitR tkns ";"))
