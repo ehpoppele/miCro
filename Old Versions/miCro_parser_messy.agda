@@ -47,40 +47,11 @@ module miCro_parser where
   [t]       +t+ ys  =  ys
   (x :t: xs) +t+ ys  =  x :t: (xs +t+ ys)
 
-  -- Option and pair types, used with tokens for parse return
-  data Option {a} (A : Set a) : Set a where
-    None : Option A
-    Some : A → Option A
-
-  -- Can use Pair.fst on a pair type to get back the first etc.
-  -- Construct with a × b i hope
-  record Pair (A B : Set) : Set where
-    constructor _×_
-    field
-      fst : A
-      snd : B
-
   --- PARSING FUNCTIONS ---
 
   -- Token Split : Searches for the first instance of the given string not in parentheses in the given token list
   -- Splits the list at that point, and return either left or right half, depending on which function was called
   -- Avoid calling this function with "(" or ")" unless you're careful about removing parens
-  stopper : Tokens → Bool
-  stopper [t] = true
-  stopper ("}" :t: tkns) = true
-  stopper tkns = false
-
-  -- Removes the given string from the front of tokens. Gives back an empty token list if the string was not found at the front
-  eat : Tokens → String → Tokens
-  eat (s1 :t: tkns) s2 with primStringEquality s1 s2
-  ... | false = [t]
-  ... | true = tkns
-
-  -- Returns the first token as a name (could add checking to confirm it isn't a number/doesn't use a unallowed symbol)
-  eatName : Tokens → String
-  eatName [t] = [t]
-  eatName (s :t: tkns) = s
-  
   {-# TERMINATING #-}
   splitL : Tokens → String → Tokens
   splitR : Tokens → String → Tokens
@@ -148,117 +119,70 @@ module miCro_parser where
   pm_search (str :t: tkns) = pm_search tkns
 
   -- Checks if a given character list is a number --
-  isNumber : List Char → Bool
-  isNumber [] = false
-  isNumber (c ∷ []) with primIsDigit c
+  is_number : List Char → Bool
+  is_number [] = false
+  is_number (c ∷ []) with primIsDigit c
   ... | true = true
   ... | false = false
-  isNumber (c ∷ chars) with primIsDigit c
-  ... | true = isNumber chars
+  is_number (c ∷ chars) with primIsDigit c
+  ... | true = is_number chars
   ... | false = false
 
   -- Converts string to a nat, using arithmetic from miCro file
-  strNatHelper : Nat → List Char → Nat
-  strNatHelper n [] = n 
-  strNatHelper n (m ∷ chars) = (strNatHelper ((n * 10) + ((primCharToNat m) - 48)) chars) 
+  str_nat_helper : Nat → List Char → Nat
+  str_nat_helper n [] = n 
+  str_nat_helper n (m ∷ chars) = (str_nat_helper ((n * 10) + ((primCharToNat m) - 48)) chars) 
 
   -- Please don't call this on non-numbers
-  stringToNat : String → Nat
-  stringToNat str = strNatHelper 0 (primStringToList str)
+  string_to_nat : String → Nat
+  string_to_nat str = str_nat_helper 0 (primStringToList str)
 
   -- Parsing functions, directly interacting with the stream and parsing it. Split into condition, expression, and statement
 
   -- Parse functions for Conditions and Expressions, which are handled separately --
   {-# TERMINATING #-}
-  parseExp : Tokens → (Option (Pair Tokens Exp))
-  parseSum : Tokens → (Option (Pair Tokens Exp))
-  parseMult : Tokens → (Option (Pair Tokens Exp))
-  parseRestOfSum : Tokens → (Option (Pair Tokens Exp))
-  parseRestOfMult : Tokens → (Option (Pair Tokens Exp))
-  parseRead : Tokens → (Option (Pair Tokens Exp))
-  parseAtom : Tokens → (Option (Pair Tokens Exp))
+  parse_exp : Tokens → Exp
+  parse_pm : Tokens → Exp
+  parse_plus_rest : Exp → Tokens → Exp
+  parse_minus_rest : Exp → Tokens → Exp
+  parse_mult : Tokens → Exp
+  parse_address : Tokens → Exp
+  parse_parens_exp : Tokens → Exp
+  parse_term : Tokens → Exp
 
-  parseExp [t] = None -- need to make sure this works
-  parseExp tkns = parseSum tkns
+  parse_exp tkns = parse_pm tkns
+  parse_pm tkns with pm_search tkns
+  ... | "+" = parse_plus_rest (parse_mult (splitL tkns "+")) (splitR tkns "+")
+  ... | "-" = parse_minus_rest (parse_mult (splitL tkns "-")) (splitR tkns "-")
+  ... | none = parse_mult tkns
 
-  parseSum tkns with parseMult tkns
-  ... | None = None
-  ... | Some (t × e) = parseRestOfSum e t
+  parse_plus_rest exp tkns with pm_search tkns
+  ... | "+" = parse_plus_rest (plus exp (parse_mult (splitL tkns "+"))) (splitR tkns "+")
+  ... | "-" = parse_minus_rest (plus exp (parse_mult (splitL tkns "-"))) (splitR tkns "-")
+  ... | none = (plus exp (parse_exp tkns))
 
-  parseRestOfSum e ("+" :t: tkns) with parseMult tkns
-  ... | None = None
-  ... | Some (t × e2) = parseRestOfSum (plus e e2) t
-  parseRestOfSum e ("-" :t: tkns) with parseMult tkns
-  ... | None = None
-  ... | Some (t × e2) = parseRestOfSum (minus e e2) t
-  parseRestOfSum e tkns = Some (tkns × e)
+  parse_minus_rest exp tkns with pm_search tkns
+  ... | "+" = parse_plus_rest (minus exp (parse_mult (splitL tkns "+"))) (splitR tkns "+")
+  ... | "-" = parse_minus_rest (minus exp (parse_mult (splitL tkns "-"))) (splitR tkns "-")
+  ... | none = (minus exp (parse_exp tkns))
 
-  parseMult tkns with parseRead tkns
-  ... | None = None
-  ... | Some (t × e) = parseRestOfMult e t
+  parse_mult tkns with token_search tkns "*"
+  ... | true = times (parse_address (splitL tkns "*")) (parse_mult (splitR tkns "*"))
+  ... | false = parse_address tkns
 
-  parseRestOfMult e ("*" :t: tkns) with parseRead tkns
-  ... | None = None
-  ... | Some (t × e2) = parseRestOfMult (times e e2) t
-  parseRestOfMult e tkns = Some (tkns × e)
+  parse_address ("[" :t: tkns) = (readAddress (parse_exp (splitL tkns "]")))
+  parse_address tkns = parse_parens_exp tkns
 
-  parseRead ("&" :t: tkns) with parseAtom tkns
-  ... | None = None
-  ... | Some (t × e) = Some (t × (readAddress e))
+  parse_parens_exp ( "(" :t: tkns) = parse_exp (splitL tkns ")")
+  parse_parens_exp tkns = parse_term tkns
 
-  parseAtom ("[" :t: tkns) with parseExp tkns
-  ... | None = None
-  ... | Some (t × e) = Some ((eat t "]") × e)
-  parseAtom (str :t: tkns) with isNumber (primStringToList str)
-  ... | true = Some (tkns × (const (stringToNat str)))
-  ... | false = Some (tkns × (readVar str))
-  parseAtom [t] = None --I think, might change later
+  parse_term (str :t: [t]) with is_number (primStringToList str) -- At this point we should either have a number or a var; otherwise there's been some error
+  ... | true = (const (string_to_nat str))
+  ... | false = (readVar str) 
+  parse_term [t] = (const 99) -- Unexpected EOF; token stream ended before it should have
+  parse_term tkns = (const 400) -- Bad syntax; error on parsing leads to this
 
   {-# TERMINATING #-} --Note: Will need to add ability to process literal booleans (t/f) later, unless not needed
-  parseCnd : Tokens → Option (Pair Tokens Cnd)
-
-  parseCnd [t] = None
-  parseCnd tkns = parseDisj tkns
-
-  parseDisj tkns with parseConj tkns
-  ... | None = None
-  ... | Some (t × c) = parseRestOfDisj c t
-
-  parseRestOfDisj c ("or" :t: tkns) with parseConj tkns
-  ... | None = None
-  ... | Some (t × c2) = parseRestOfDisj (c Or c2)
-  parseRestOfDisj c tkns = Some (tkns × c)
-
-  parseConj tkns with parseNeg tkns
-  ... | None = None
-  ... | Some (t × c) = parseRestOfConj
-
-  parseRestOfConj c ("or" :t: tkns) with parseNeg tkns
-  ... | None = None
-  ... | Some (t × c2) = parseRestOfConj (c And c2)
-  parseRestOfConj c tkns = Some (tkns × c)
-
-  parseNeg ("not" :t: tkns) with parseComparison tkns
-  ... | None = None
-  ... | Some (t × c) = Some (t × (Not c))
-  parseNeg tkns = parseComparison tkns
-
-  parseComparison with parseExp tkns
-  ... | None = parseBaseCnd tkns
-  ... | Some (t × e) = parseRestOfComparison e t
-
-  parseRestOfComparison e ("==" :t: tkns) with parseExp tkns
-  ... | None = None
-  ... | Some (t × e2) = Some (t × (e == e2))
-  -- Rest should be filled out likewise
-
-  parseBaseCnd ("(" :t: tkns) with parseCnd tkns
-  ... | None = None
-  ... | Some (t × c) = Some ((eat t ")") × c)
-  parseBaseCnd ("true" :t: tkns) = Some (tkns × (cndBool true))
-  parseBaseCnd ("false" :t: tkns) = Some (tkns × (cndBool false))
-  parseBaseCnd other = None --shouldn't be anything else here that could be correct
-
   parse_condition : Tokens → Cnd
   parse_disjunction : Tokens → Cnd
   parse_conjunction : Tokens → Cnd
@@ -296,76 +220,30 @@ module miCro_parser where
   parse_parens_cnd ( "(" :t: tkns) = parse_condition (splitL tkns ")")
   parse_parens_cnd other = (cndBool false) --Error; this step should never be reached unless program was written wrong. Should raise error here once I find out how/if I can
 
-  -- Statement parse functions --
+  -- Statement parse function; directly parses statements and makes calls to parse conditions and expressions --
   {-# TERMINATING #-}
-  parseStmt1 : Tokens → (Option (Pair Tokens Stmt))
-  parseStmt2 : (Option (Pair Tokens Stmt)) → (Option (Pair Tokens Stmt))
-  parseSingleStmt : Tokens → (Option (Pair Tokens Stmt))
-  parseRestOfWhile : Tokens → (Option (Pair Tokens Stmt))
-  parseRestOfIf : Tokens → (Option (Pair Tokens Stmt))
-  parseRestOfIfElse : Tokens → (Option (Pair Tokens Stmt))
-  parseRestOfWrite : Tokens → (Option (Pair Tokens Stmt))
+  parse_stmt : Tokens → Stmt
+  parse_stmt [t] = No-op
+  parse_stmt ("if" :t: ("(" :t: tkns)) = Seq (If (parse_condition (splitL tkns ")")) (parse_stmt (splitL (trimTo tkns "{") "}"))) (parse_stmt (splitR tkns ";"))
+  parse_stmt ("ifElse" :t: ( "("  :t: tkns)) = Seq (IfElse (parse_condition (splitL tkns ")")) (parse_stmt (splitL (trimTo tkns "{") "}")) (parse_stmt (splitL (splitR (trimTo tkns "}") "{") "}"))) (parse_stmt (splitR tkns ";"))
+  parse_stmt ("while" :t:( "(" :t: tkns)) =  Seq (While (parse_condition (splitL tkns ")")) (parse_stmt (splitL (trimTo tkns "{") "}"))) (parse_stmt (splitR tkns ";"))
+  parse_stmt ("ptr" :t: str :t: "=" :t: tkns) = Seq (AssignPtr str (parse_exp (splitL tkns ";"))) (parse_stmt (splitR tkns ";"))
+  parse_stmt ("[" :t: tkns) = Seq (WriteHeap (parse_exp (splitL tkns "]")) (parse_exp (splitL (splitR tkns "=") ";"))) (parse_stmt (splitR tkns ";"))
+  parse_stmt (str :t: ( "=" :t: tkns)) = Seq (AssignVar Natural str (parse_exp (splitL tkns ";"))) (parse_stmt (splitR tkns ";"))
+  parse_stmt error = No-op
 
-  -- Main Stmt parser; this continually creates a sequence of parsed stmts 
-  parseStmt1 [t] = None
-  parseStmt1 tkns = parseStmt2 (parseSingleStmt tkns)
+  -- Environment Parse Function; parses the INIT variables attached to the beginning of a program; assumes it's passed a single proper init line
+  parse_env : Tokens → Env
+  parse_env [t] = [e]
+  parse_env (str :t: ("=" :t: (num :t: tkns))) with is_number (primStringToList num)
+  ... | true = ((Var Natural str (string_to_nat num)) :e: (parse_env tkns))
+  ... | false = parse_env tkns
+  parse_env (other :t: tkns) = parse_env tkns
 
-  -- Helper function for Stmt1; if these combined I would have to write out parseStmt3 tkns about five times (since I can't use "with" in a "let ... in"), which would mean five times slower parsing
-  parseStmt2 None = None
-  parseStmt2 (Some (t × s)) with stopper t
-  ... | true = (Some ([t] × s))
-  ... | false = (Some ([t] × (Seq s (parseStmt1 t))))
-
-  -- Parses a single statement from the tokens; does the "heavy lifting" stmt parsing
-  parseSingleStmt [t] = (Some ([t] × No-op)) -- don't know if I need this, but just want to catch errors
-  parseSingleStmt ("while" :t: tkns) with (parseCnd (eat tkns "("))
-  ... | None = None
-  ... | Some (tkns2 × c) = parseRestOfWhile c (eat (eat tkns2 ")") "{")
-  parseSingleStmt ("if" :t: tkns) with (parseCnd (eat tkns "("))
-  ... | None = None
-  ... | Some (tkns2 × c) = parseRestOfIf c (eat (eat tkns2 ")") "{")
-  parseSingleStmt ("*" :t: tkns) with parseExp (eat (eat tkns (eatName tkns)) "=") -- A little cheaty since this sort of looks two tokens ahead
-  ... | None = None
-  ... | Some (tkns2 × e) = Some ((eat tkns2 ";") × (AssignPtr (eatName tkns) e))
-  parseSingleStmt ("&" :t: tkns) with parseExp tkns
-  ... | None = None
-  ... | Some (t × e) = parseRestOfWrite e (eat tkns "=")
-  parseSingleStmt tkns with parseExp (eat (eat tkns (eatName tkns)) "=") --This will catch any other errors, as eat will return [t] if it can't eat the expeted token, leading to parseExp returning None
-  ... | None = None
-  ... | Some (tkns2 × e) = Some ((eat tkns2 ";") × (AssignVar (eatName tkns) e))
-
-  -- Parses the rest of a multi-part statement
-  
-  parseRestOfWhile c tkns with parseStmt1 tkns
-  ... | None = None
-  ... | Some (t × s) = Some ((eat t "}") × (While c s))
-
-  parseRestOfIf c tkns with parseStmt1 tkns
-  ... | None = None
-  ... | Some (t × s) = parseRestOfIfElse c s (eat tkns "}")
-
-  parseRestOfIfElse c s ("else" :t: tkns) with parseStmt1 (eat tkns "{")
-  ... | None = None
-  ... | Some (t × s2) = Some ((eat t "}") × (IfElse c s s2))
-  parseRestOfIfElse c s tkns = Some (tkns × (If c s))
-
-  parseRestOfWrite e [t] = None
-  parseRestOfWrite e tkns with parseExp tkns
-  ... | None = None
-  ... | Some (t × e2) = Some ((eat t ";") × (Writeheap e e2))
-
-  -- Top level parser function; calls the other parsers and converts from the option (token stmt) type to the appropriate stmt
-  parseTokens : Tokens → Stmt
-  parseTokens tkns with parseStmt1 tkns
-  ... | None  = No-op --The program failed to parse
-  ... | (Some ([t] × s)) = s
-  ... | (Some (t × s)) = No-op --Parser thinks it worked, but didn't finish parsing
-
-  -- Main function; parses and then runs the program
+  -- Main function; parses the environment and program statements, then runs the whole thing and returns end environment
   run : Tokens → RAM
-  run t = exec (parseTokens t)
-
-
+  run ("INIT" :t: tkns) = exec ((parse_env (splitL tkns ";")) & [h]) (parse_stmt (splitR tkns ";"))
+  run error = [e] & [h]
 
 --- Extra Notes ---
 -- No ++ is allowed, since right now that reads as a plus operator (solution would be to make it process to "++":t:tkns)

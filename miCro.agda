@@ -151,7 +151,7 @@ module miCro where
   ...                                             | false = eval (v & h) (readVar str1)
   eval ([e] & h) (readVar++ str) = 1 --I don't know if this makes any sense; perhaps still return zero since var can't be found?
   eval (((Var type str2 x) :e: v) & h) (readVar++ str1) with primStringEquality str1 str2
-  ...                                             | true = suc xx
+  ...                                             | true = suc x
   ...                                             | false = eval (v & h) (readVar++ str1)
   eval ([e] & h) (derefVar str) = zero
   eval (((Var type str1 x) :e: v) & h) (derefVar str2) with primStringEquality str1 str2
