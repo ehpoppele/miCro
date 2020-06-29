@@ -72,13 +72,14 @@ module miCro_parser where
 
   -- Removes the given string from the front of tokens. Gives back an empty token list if the string was not found at the front
   eat : Tokens → String → Tokens
+  eat [t] str = [t]
   eat (s1 :t: tkns) s2 with primStringEquality s1 s2
   ... | false = [t]
   ... | true = tkns
 
   -- Returns the first token as a name (could add checking to confirm it isn't a number/doesn't use a unallowed symbol)
   eatName : Tokens → String
-  eatName [t] = [t]
+  eatName [t] = ""
   eatName (s :t: tkns) = s
   
   {-# TERMINATING #-}
@@ -173,8 +174,8 @@ module miCro_parser where
   parseExp : Tokens → (Option (Pair Tokens Exp))
   parseSum : Tokens → (Option (Pair Tokens Exp))
   parseMult : Tokens → (Option (Pair Tokens Exp))
-  parseRestOfSum : Tokens → (Option (Pair Tokens Exp))
-  parseRestOfMult : Tokens → (Option (Pair Tokens Exp))
+  parseRestOfSum : Exp → Tokens → (Option (Pair Tokens Exp))
+  parseRestOfMult : Exp → Tokens → (Option (Pair Tokens Exp))
   parseRead : Tokens → (Option (Pair Tokens Exp))
   parseAtom : Tokens → (Option (Pair Tokens Exp))
 
@@ -205,6 +206,7 @@ module miCro_parser where
   parseRead ("&" :t: tkns) with parseAtom tkns
   ... | None = None
   ... | Some (t × e) = Some (t × (readAddress e))
+  parseRead tkns = parseAtom tkns
 
   parseAtom ("[" :t: tkns) with parseExp tkns
   ... | None = None
@@ -216,6 +218,14 @@ module miCro_parser where
 
   {-# TERMINATING #-} --Note: Will need to add ability to process literal booleans (t/f) later, unless not needed
   parseCnd : Tokens → Option (Pair Tokens Cnd)
+  parseDisj : Tokens → Option (Pair Tokens Cnd)
+  parseConj : Tokens → Option (Pair Tokens Cnd)
+  parseNeg : Tokens → Option (Pair Tokens Cnd)
+  parseComp : Tokens → Option (Pair Tokens Cnd)
+  parseBaseCnd : Tokens → Option (Pair Tokens Cnd)
+  parseRestOfDisj : Cnd → Tokens → Option (Pair Tokens Cnd)
+  parseRestOfConj : Cnd → Tokens → Option (Pair Tokens Cnd)
+  parseRestOfComp : Exp → Tokens → Option (Pair Tokens Cnd)
 
   parseCnd [t] = None
   parseCnd tkns = parseDisj tkns
@@ -226,30 +236,47 @@ module miCro_parser where
 
   parseRestOfDisj c ("or" :t: tkns) with parseConj tkns
   ... | None = None
-  ... | Some (t × c2) = parseRestOfDisj (c Or c2)
+  ... | Some (t × c2) = parseRestOfDisj (c Or c2) t
   parseRestOfDisj c tkns = Some (tkns × c)
 
   parseConj tkns with parseNeg tkns
   ... | None = None
-  ... | Some (t × c) = parseRestOfConj
+  ... | Some (t × c) = parseRestOfConj c t
 
   parseRestOfConj c ("or" :t: tkns) with parseNeg tkns
   ... | None = None
-  ... | Some (t × c2) = parseRestOfConj (c And c2)
+  ... | Some (t × c2) = parseRestOfConj (c And c2) t
   parseRestOfConj c tkns = Some (tkns × c)
 
-  parseNeg ("not" :t: tkns) with parseComparison tkns
+  parseNeg ("not" :t: tkns) with parseComp tkns
   ... | None = None
   ... | Some (t × c) = Some (t × (Not c))
-  parseNeg tkns = parseComparison tkns
+  parseNeg tkns = parseComp tkns
 
-  parseComparison with parseExp tkns
+  -- At this point, we attempt to parse what's next as an expression. If that fails, we ignore it, and continue parsing comparisons, where syntax errors would still be caught
+  parseComp tkns with parseExp tkns
   ... | None = parseBaseCnd tkns
-  ... | Some (t × e) = parseRestOfComparison e t
+  ... | Some (t × e) = parseRestOfComp e t
 
-  parseRestOfComparison e ("==" :t: tkns) with parseExp tkns
+  parseRestOfComp e ("==" :t: tkns) with parseExp tkns
   ... | None = None
   ... | Some (t × e2) = Some (t × (e == e2))
+  parseRestOfComp e ("!=" :t: tkns) with parseExp tkns
+  ... | None = None
+  ... | Some (t × e2) = Some (t × (e != e2))
+  parseRestOfComp e ("<=" :t: tkns) with parseExp tkns
+  ... | None = None
+  ... | Some (t × e2) = Some (t × (e <= e2))
+  parseRestOfComp e (">=" :t: tkns) with parseExp tkns
+  ... | None = None
+  ... | Some (t × e2) = Some (t × (e >= e2))
+  parseRestOfComp e ("<" :t: tkns) with parseExp tkns
+  ... | None = None
+  ... | Some (t × e2) = Some (t × (e < e2))
+  parseRestOfComp e (">" :t: tkns) with parseExp tkns
+  ... | None = None
+  ... | Some (t × e2) = Some (t × (e > e2))
+  parseRestOfComp e tkns = None --If we manage to parse an expression but are missing a proper comparison we throw an error, assuming no condition could parse as an expression.
   -- Rest should be filled out likewise
 
   parseBaseCnd ("(" :t: tkns) with parseCnd tkns
@@ -259,62 +286,32 @@ module miCro_parser where
   parseBaseCnd ("false" :t: tkns) = Some (tkns × (cndBool false))
   parseBaseCnd other = None --shouldn't be anything else here that could be correct
 
-  parse_condition : Tokens → Cnd
-  parse_disjunction : Tokens → Cnd
-  parse_conjunction : Tokens → Cnd
-  parse_negation : Tokens → Cnd
-  parse_comparison : Tokens → Cnd
-  parse_literal : Tokens → Cnd
-  parse_parens_cnd : Tokens → Cnd
-
-  parse_condition tkns = parse_disjunction tkns
-
-  parse_disjunction tkns with token_search tkns "or"
-  ...                       | true = ((parse_conjunction (splitL tkns "or")) Or (parse_disjunction (splitR tkns "or")))
-  ...                       | false = parse_conjunction tkns
-
-  parse_conjunction tkns with token_search tkns "and"
-  ...                       | true = ((parse_negation (splitL tkns "and")) And (parse_conjunction (splitR tkns "and")))
-  ...                       | false = parse_negation tkns
-
-  parse_negation ("not" :t: tkns) = (Not (parse_negation tkns))
-  parse_negation tkns = parse_comparison tkns
-
-  parse_comparison tkns with comp_token_search tkns
-  ... | "==" = ((parse_exp (splitL tkns "==")) == (parse_exp (splitR tkns "==")))
-  ... | "!=" = ((parse_exp (splitL tkns "!=")) != (parse_exp (splitR tkns "!=")))
-  ... | "<=" = ((parse_exp (splitL tkns "<=")) <= (parse_exp (splitR tkns "<=")))
-  ... | ">=" = ((parse_exp (splitL tkns ">=")) >= (parse_exp (splitR tkns ">=")))
-  ... | "<" = ((parse_exp (splitL tkns "<")) < (parse_exp (splitR tkns "<")))
-  ... | ">" = ((parse_exp (splitL tkns ">")) > (parse_exp (splitR tkns ">")))
-  ... | none = parse_literal tkns -- none just as generic pattern here to satisfy agda, although string "none" will be returned in this case
-
-  parse_literal ("true" :t: [t]) = (cndBool true)
-  parse_literal ("false" :t: [t]) = (cndBool false)
-  parse_literal tkns = parse_parens_cnd tkns
-
-  parse_parens_cnd ( "(" :t: tkns) = parse_condition (splitL tkns ")")
-  parse_parens_cnd other = (cndBool false) --Error; this step should never be reached unless program was written wrong. Should raise error here once I find out how/if I can
-
   -- Statement parse functions --
   {-# TERMINATING #-}
   parseStmt1 : Tokens → (Option (Pair Tokens Stmt))
   parseStmt2 : (Option (Pair Tokens Stmt)) → (Option (Pair Tokens Stmt))
+  parseStmt3 : (Option (Pair Tokens Stmt)) → (Option (Pair Tokens Stmt))
   parseSingleStmt : Tokens → (Option (Pair Tokens Stmt))
-  parseRestOfWhile : Tokens → (Option (Pair Tokens Stmt))
-  parseRestOfIf : Tokens → (Option (Pair Tokens Stmt))
-  parseRestOfIfElse : Tokens → (Option (Pair Tokens Stmt))
-  parseRestOfWrite : Tokens → (Option (Pair Tokens Stmt))
+  parseRestOfWhile : Cnd → Tokens → (Option (Pair Tokens Stmt))
+  parseRestOfIf : Cnd → Tokens → (Option (Pair Tokens Stmt))
+  parseRestOfIfElse : Cnd → Stmt → Tokens → (Option (Pair Tokens Stmt))
+  parseRestOfWrite : Exp → Tokens → (Option (Pair Tokens Stmt))
 
   -- Main Stmt parser; this continually creates a sequence of parsed stmts 
   parseStmt1 [t] = None
   parseStmt1 tkns = parseStmt2 (parseSingleStmt tkns)
 
-  -- Helper function for Stmt1; if these combined I would have to write out parseStmt3 tkns about five times (since I can't use "with" in a "let ... in"), which would mean five times slower parsing
+  -- Helper function for Stmt1; if these combined I would have to write out parseSingleStmt tkns about five times (since I can't use "with" in a "let ... in"), which would mean five times slower parsing
   parseStmt2 None = None
   parseStmt2 (Some (t × s)) with stopper t
   ... | true = (Some ([t] × s))
-  ... | false = (Some ([t] × (Seq s (parseStmt1 t))))
+  ... | false = parseStmt3 (Some (t × s)) -- Now we want "(Some ([t] × (Seq s (parseStmt1 t))))", but we must first check that parseStmt1 gives a Some return
+
+  -- Another helper, since we need to make a Seq in second case above, but need to know we got back some Stmt and not a None option
+  parseStmt3 None = None
+  parseStmt3 (Some (tkns × s)) with parseStmt1 tkns
+  ... | None = None
+  ... | Some (t × s2) = (Some ([t] × (Seq s s2)))
 
   -- Parses a single statement from the tokens; does the "heavy lifting" stmt parsing
   parseSingleStmt [t] = (Some ([t] × No-op)) -- don't know if I need this, but just want to catch errors
@@ -332,7 +329,7 @@ module miCro_parser where
   ... | Some (t × e) = parseRestOfWrite e (eat tkns "=")
   parseSingleStmt tkns with parseExp (eat (eat tkns (eatName tkns)) "=") --This will catch any other errors, as eat will return [t] if it can't eat the expeted token, leading to parseExp returning None
   ... | None = None
-  ... | Some (tkns2 × e) = Some ((eat tkns2 ";") × (AssignVar (eatName tkns) e))
+  ... | Some (tkns2 × e) = Some ((eat tkns2 ";") × (AssignVar Natural (eatName tkns) e))
 
   -- Parses the rest of a multi-part statement
   
@@ -352,7 +349,7 @@ module miCro_parser where
   parseRestOfWrite e [t] = None
   parseRestOfWrite e tkns with parseExp tkns
   ... | None = None
-  ... | Some (t × e2) = Some ((eat t ";") × (Writeheap e e2))
+  ... | Some (t × e2) = Some ((eat t ";") × (WriteHeap e e2))
 
   -- Top level parser function; calls the other parsers and converts from the option (token stmt) type to the appropriate stmt
   parseTokens : Tokens → Stmt
@@ -361,9 +358,9 @@ module miCro_parser where
   ... | (Some ([t] × s)) = s
   ... | (Some (t × s)) = No-op --Parser thinks it worked, but didn't finish parsing
 
-  -- Main function; parses and then runs the program
+  -- Main function; parses and then runs the program with empty intial RAM
   run : Tokens → RAM
-  run t = exec (parseTokens t)
+  run t = exec ([e] & [h]) (parseTokens t)
 
 
 
