@@ -9,9 +9,9 @@
 -- Token type is a list of strings with all whitespace removed, separated on special characters
 -- So "while" should be one list entry, with the proceeding "(" being it's own, and so on.
 
-module miCro_parser where
+module Interpreter.miCro_parser where
 
-  open import miCro
+  open import Interpreter.miCro
 
   -- Builtins and Primitives --
   open import Agda.Builtin.Bool
@@ -81,72 +81,6 @@ module miCro_parser where
   eatName : Tokens → String
   eatName [t] = ""
   eatName (s :t: tkns) = s
-  
-  {-# TERMINATING #-}
-  splitL : Tokens → String → Tokens
-  splitR : Tokens → String → Tokens
-  
-  splitL [t] str = [t]
-  splitL ( "(" :t: tkns) str = "(" :t: ((splitL tkns ")" ) +t+ (")" :t: (splitL (splitR tkns ")" ) str)))
-  splitL ( "{" :t: tkns) str = "{" :t: ((splitL tkns "}" ) +t+ ("}" :t: (splitL (splitR tkns "}" ) str)))
-  splitL ( "[" :t: tkns) str = "[" :t: ((splitL tkns "]" ) +t+ ("]" :t: (splitL (splitR tkns "]" ) str)))
-  splitL (str1 :t: tkns) str2 with primStringEquality str1 str2
-  ...                           | true = [t]
-  ...                           | false = str1 :t: (splitL tkns str2)
-
-  splitR [t] str = [t]
-  splitR ( "(" :t: tkns) str = splitR (splitR tkns ")" ) str
-  splitR ( "{" :t: tkns) str = splitR (splitR tkns "}" ) str
-  splitR ( "[" :t: tkns) str = splitR (splitR tkns "]" ) str
-  splitR (str1 :t: tkns) str2 with primStringEquality str1 str2
-  ...                           | true = tkns
-  ...                           | false = splitR tkns str2
-
-  --And another helper function for curly brackets, since split needs to treat them like parens but we can't remove them as easily (since we use "(" :t: tkns and cant do "(" tkns "{" etc)
-  trimTo : Tokens → String → Tokens
-  trimTo [t] str = [t]
-  trimTo (str1 :t: tkns) str2 with primStringEquality str1 str2
-  ... | true = tkns
-  ... | false = trimTo tkns str2
-
-  -- Token Search : searches the tokens for the first instance of given string that is not in parentheses/brackets/braces
-  -- Returns true if one is found, false otherwise
-  {-# TERMINATING #-}
-  token_search : Tokens → String → Bool
-  token_search [t] str = false
-  token_search ("(" :t: tkns) str = token_search (splitR tkns ")" ) str
-  token_search ("{" :t: tkns) str = token_search (splitR tkns "}" ) str
-  token_search ("[" :t: tkns) str = token_search (splitR tkns "]" ) str
-  token_search (str1 :t: tkns) str2 with primStringEquality str1 str2
-  ...                                 | true = true
-  ...                                 | false = token_search tkns str2
-
-  -- Comparison Token Search : Searches for one of six comparisons (outside of parentheses) and returns the first found
-  -- If things were written properly, the first found should be the only one, and if none is found, then "none" is returned
-  {-# TERMINATING #-}
-  comp_token_search : Tokens → String
-  comp_token_search  [t] = "none"
-  comp_token_search ("(" :t: tkns) = comp_token_search (splitR tkns ")" )
-  comp_token_search ("{" :t: tkns) = comp_token_search (splitR tkns "}" )
-  comp_token_search ("[" :t: tkns) = comp_token_search (splitR tkns "]" )
-  comp_token_search ( "==" :t: tkns) = "=="
-  comp_token_search ( "!=" :t: tkns) = ">="
-  comp_token_search ( "<=" :t: tkns) = "<="
-  comp_token_search ( ">=" :t: tkns) = ">="
-  comp_token_search ( "<" :t: tkns) = "<"
-  comp_token_search ( ">" :t: tkns) = ">"
-  comp_token_search (str :t: tkns) = comp_token_search tkns
-
-  -- Plus/Minus search: Similarly returns the first instance of "+" or "-" if one occurs
-  {-# TERMINATING #-}
-  pm_search : Tokens → String
-  pm_search [t] = "none"
-  pm_search ("(" :t: tkns) = pm_search (splitR tkns ")" )
-  pm_search ("{" :t: tkns) = pm_search (splitR tkns "}" )
-  pm_search ("[" :t: tkns) = pm_search (splitR tkns "]" )
-  pm_search ("+" :t: tkns) = "+"
-  pm_search ("-" :t: tks) = "-"
-  pm_search (str :t: tkns) = pm_search tkns
 
   -- Checks if a given character list is a number --
   isNumber : List Char → Bool
@@ -167,6 +101,22 @@ module miCro_parser where
   stringToNat : String → Nat
   stringToNat str = strNatHelper 0 (primStringToList str)
 
+  -- Checks to see if a word is a keyword or if it should be treated as a var (assumes numbers filtered already; may change that later)
+  -- Maybe should get a better workaround than this; current issue is parseExp will read so much as a var, esp. an issue with its call in parseComp
+  isVarName : String → Bool
+  isVarName "" = false
+  isVarName "true" = false
+  isVarName "false" = false
+  isVarName "while" = false
+  isVarName "and" = false
+  isVarName "or" = false
+  isVarName "(" = false
+  isVarName ")" = false
+  isVarName "[" = false
+  isVarName "]" = false
+  isVarName str = true
+  -- may need more cases to handle symbols; will figure that out
+
   -- Parsing functions, directly interacting with the stream and parsing it. Split into condition, expression, and statement
 
   -- Parse functions for Conditions and Expressions, which are handled separately --
@@ -178,6 +128,7 @@ module miCro_parser where
   parseRestOfMult : Exp → Tokens → (Option (Pair Tokens Exp))
   parseRead : Tokens → (Option (Pair Tokens Exp))
   parseAtom : Tokens → (Option (Pair Tokens Exp))
+  parseVar : Tokens → (Option (Pair Tokens Exp))
 
   parseExp [t] = None -- need to make sure this works
   parseExp tkns = parseSum tkns
@@ -213,8 +164,13 @@ module miCro_parser where
   ... | Some (t × e) = Some ((eat t "]") × e)
   parseAtom (str :t: tkns) with isNumber (primStringToList str)
   ... | true = Some (tkns × (const (stringToNat str)))
-  ... | false = Some (tkns × (readVar str))
+  ... | false = parseVar (str :t: tkns)
   parseAtom [t] = None --I think, might change later
+
+  parseVar (str :t: tkns) with isVarName str
+  ... | false = None
+  ... | true = Some (tkns × (readVar str))
+  parseVar [t] = None
 
   {-# TERMINATING #-} --Note: Will need to add ability to process literal booleans (t/f) later, unless not needed
   parseCnd : Tokens → Option (Pair Tokens Cnd)
@@ -243,12 +199,12 @@ module miCro_parser where
   ... | None = None
   ... | Some (t × c) = parseRestOfConj c t
 
-  parseRestOfConj c ("or" :t: tkns) with parseNeg tkns
+  parseRestOfConj c ("and" :t: tkns) with parseNeg tkns
   ... | None = None
   ... | Some (t × c2) = parseRestOfConj (c And c2) t
   parseRestOfConj c tkns = Some (tkns × c)
 
-  parseNeg ("not" :t: tkns) with parseComp tkns
+  parseNeg ("not" :t: tkns) with parseNeg tkns
   ... | None = None
   ... | Some (t × c) = Some (t × (Not c))
   parseNeg tkns = parseComp tkns
@@ -326,7 +282,7 @@ module miCro_parser where
   ... | Some (tkns2 × e) = Some ((eat tkns2 ";") × (AssignPtr (eatName tkns) e))
   parseSingleStmt ("&" :t: tkns) with parseExp tkns
   ... | None = None
-  ... | Some (t × e) = parseRestOfWrite e (eat tkns "=")
+  ... | Some (tkns2 × e) = parseRestOfWrite e (eat tkns2 "=")
   parseSingleStmt tkns with parseExp (eat (eat tkns (eatName tkns)) "=") --This will catch any other errors, as eat will return [t] if it can't eat the expeted token, leading to parseExp returning None
   ... | None = None
   ... | Some (tkns2 × e) = Some ((eat tkns2 ";") × (AssignVar Natural (eatName tkns) e))
@@ -356,7 +312,7 @@ module miCro_parser where
   parseTokens tkns with parseStmt1 tkns
   ... | None  = No-op --The program failed to parse
   ... | (Some ([t] × s)) = s
-  ... | (Some (t × s)) = No-op --Parser thinks it worked, but didn't finish parsing
+  ... | (Some (t × s)) = (Seq No-op No-op) --Parser thinks it worked, but didn't finish parsing
 
   -- Main function; parses and then runs the program with empty intial RAM
   run : Tokens → RAM
