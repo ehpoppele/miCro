@@ -1,6 +1,6 @@
 -- Code for basic C-style language in agda --
 
-module miCro where
+module Interpreter.miCro where
 
   import Relation.Binary.PropositionalEquality as Eq
   open Eq using (_≡_; refl) -- For test programs

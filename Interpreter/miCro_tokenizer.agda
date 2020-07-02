@@ -1,9 +1,9 @@
 --- miCro Tokenizer ---
 
-module miCro_tokenizer where
+module Interpreter.miCro_tokenizer where
 
-  open import miCro_parser -- For token data type; parser was written first so it appears in there
-  open import miCro
+  open import Interpreter.miCro_parser -- For token data type; parser was written first so it appears in there
+  open import Interpreter.miCro
   open import Agda.Builtin.Bool
   import Relation.Binary.PropositionalEquality as Eq
   open Eq using (_≡_; refl) -- For test programs
