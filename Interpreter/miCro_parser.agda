@@ -126,7 +126,6 @@ module Interpreter.miCro_parser where
   parseMult : Tokens → (Option (Pair Tokens Exp))
   parseRestOfSum : Exp → Tokens → (Option (Pair Tokens Exp))
   parseRestOfMult : Exp → Tokens → (Option (Pair Tokens Exp))
-  parseRead : Tokens → (Option (Pair Tokens Exp))
   parseAtom : Tokens → (Option (Pair Tokens Exp))
   parseVar : Tokens → (Option (Pair Tokens Exp))
 
@@ -135,33 +134,28 @@ module Interpreter.miCro_parser where
 
   parseSum tkns with parseMult tkns
   ... | None = None
-  ... | Some (t × e) = parseRestOfSum e t
+  ... | Some (tkns' × e) = parseRestOfSum e tkns'
 
   parseRestOfSum e ("+" :t: tkns) with parseMult tkns
   ... | None = None
-  ... | Some (t × e2) = parseRestOfSum (plus e e2) t
+  ... | Some (tkns' × e2) = parseRestOfSum (plus e e2) tkns'
   parseRestOfSum e ("-" :t: tkns) with parseMult tkns
   ... | None = None
-  ... | Some (t × e2) = parseRestOfSum (minus e e2) t
+  ... | Some (tkns' × e2) = parseRestOfSum (minus e e2) tkns'
   parseRestOfSum e tkns = Some (tkns × e)
 
-  parseMult tkns with parseRead tkns
+  parseMult tkns with parseAtom tkns
   ... | None = None
-  ... | Some (t × e) = parseRestOfMult e t
+  ... | Some (tkns' × e) = parseRestOfMult e tkns'
 
-  parseRestOfMult e ("*" :t: tkns) with parseRead tkns
+  parseRestOfMult e ("*" :t: tkns) with parseAtom tkns
   ... | None = None
-  ... | Some (t × e2) = parseRestOfMult (times e e2) t
+  ... | Some (tkns' × e2) = parseRestOfMult (times e e2) tkns'
   parseRestOfMult e tkns = Some (tkns × e)
-
-  parseRead ("&" :t: tkns) with parseAtom tkns
-  ... | None = None
-  ... | Some (t × e) = Some (t × (readAddress e))
-  parseRead tkns = parseAtom tkns
 
   parseAtom ("[" :t: tkns) with parseExp tkns
   ... | None = None
-  ... | Some (t × e) = Some ((eat t "]") × e)
+  ... | Some (tkns' × e) = Some ((eat tkns' "]") × e)
   parseAtom (str :t: tkns) with isNumber (primStringToList str)
   ... | true = Some (tkns × (const (stringToNat str)))
   ... | false = parseVar (str :t: tkns)
@@ -188,59 +182,57 @@ module Interpreter.miCro_parser where
 
   parseDisj tkns with parseConj tkns
   ... | None = None
-  ... | Some (t × c) = parseRestOfDisj c t
+  ... | Some (tkns' × c) = parseRestOfDisj c tkns'
 
   parseRestOfDisj c ("or" :t: tkns) with parseConj tkns
   ... | None = None
-  ... | Some (t × c2) = parseRestOfDisj (c Or c2) t
+  ... | Some (tkns' × c2) = parseRestOfDisj (c Or c2) tkns'
   parseRestOfDisj c tkns = Some (tkns × c)
 
   parseConj tkns with parseNeg tkns
   ... | None = None
-  ... | Some (t × c) = parseRestOfConj c t
+  ... | Some (tkns' × c) = parseRestOfConj c tkns'
 
   parseRestOfConj c ("and" :t: tkns) with parseNeg tkns
   ... | None = None
-  ... | Some (t × c2) = parseRestOfConj (c And c2) t
+  ... | Some (tkns' × c2) = parseRestOfConj (c And c2) tkns'
   parseRestOfConj c tkns = Some (tkns × c)
 
   parseNeg ("not" :t: tkns) with parseNeg tkns
   ... | None = None
-  ... | Some (t × c) = Some (t × (Not c))
-  parseNeg tkns = parseComp tkns
-
-  -- At this point, we attempt to parse what's next as an expression. If that fails, we ignore it, and continue parsing comparisons, where syntax errors would still be caught
-  parseComp tkns with parseExp tkns
-  ... | None = parseBaseCnd tkns
-  ... | Some (t × e) = parseRestOfComp e t
-
-  parseRestOfComp e ("==" :t: tkns) with parseExp tkns
-  ... | None = None
-  ... | Some (t × e2) = Some (t × (e == e2))
-  parseRestOfComp e ("!=" :t: tkns) with parseExp tkns
-  ... | None = None
-  ... | Some (t × e2) = Some (t × (e != e2))
-  parseRestOfComp e ("<=" :t: tkns) with parseExp tkns
-  ... | None = None
-  ... | Some (t × e2) = Some (t × (e <= e2))
-  parseRestOfComp e (">=" :t: tkns) with parseExp tkns
-  ... | None = None
-  ... | Some (t × e2) = Some (t × (e >= e2))
-  parseRestOfComp e ("<" :t: tkns) with parseExp tkns
-  ... | None = None
-  ... | Some (t × e2) = Some (t × (e < e2))
-  parseRestOfComp e (">" :t: tkns) with parseExp tkns
-  ... | None = None
-  ... | Some (t × e2) = Some (t × (e > e2))
-  parseRestOfComp e tkns = None --If we manage to parse an expression but are missing a proper comparison we throw an error, assuming no condition could parse as an expression.
-  -- Rest should be filled out likewise
+  ... | Some (tkns' × c) = Some (tkns' × (Not c))
+  parseNeg tkns = parseBaseCnd tkns
 
   parseBaseCnd ("(" :t: tkns) with parseCnd tkns
   ... | None = None
-  ... | Some (t × c) = Some ((eat t ")") × c)
+  ... | Some (tkns' × c) = Some ((eat tkns' ")") × c)
   parseBaseCnd ("true" :t: tkns) = Some (tkns × (cndBool true))
   parseBaseCnd ("false" :t: tkns) = Some (tkns × (cndBool false))
-  parseBaseCnd other = None --shouldn't be anything else here that could be correct
+  parseBaseCnd tkns = parseComp tkns
+
+  parseComp tkns with parseExp tkns
+  ... | None = None --Since we've tried to parse everything else, we can safely assume this is either an expression or a syntax error
+  ... | Some (tkns' × e) = parseRestOfComp e tkns'
+
+  parseRestOfComp e ("==" :t: tkns) with parseExp tkns
+  ... | None = None
+  ... | Some (tkns' × e2) = Some (tkns' × (e == e2))
+  parseRestOfComp e ("!=" :t: tkns) with parseExp tkns
+  ... | None = None
+  ... | Some (tkns' × e2) = Some (tkns' × (e != e2))
+  parseRestOfComp e ("<=" :t: tkns) with parseExp tkns
+  ... | None = None
+  ... | Some (tkns' × e2) = Some (tkns' × (e <= e2))
+  parseRestOfComp e (">=" :t: tkns) with parseExp tkns
+  ... | None = None
+  ... | Some (tkns' × e2) = Some (tkns' × (e >= e2))
+  parseRestOfComp e ("<" :t: tkns) with parseExp tkns
+  ... | None = None
+  ... | Some (tkns' × e2) = Some (tkns' × (e < e2))
+  parseRestOfComp e (">" :t: tkns) with parseExp tkns
+  ... | None = None
+  ... | Some (tkns' × e2) = Some (tkns' × (e > e2))
+  parseRestOfComp e tkns = None --If we manage to parse an expression but are missing a proper comparison we throw an error, assuming no condition could parse as an expression.
 
   -- Statement parse functions --
   {-# TERMINATING #-}
@@ -259,67 +251,64 @@ module Interpreter.miCro_parser where
 
   -- Helper function for Stmt1; if these combined I would have to write out parseSingleStmt tkns about five times (since I can't use "with" in a "let ... in"), which would mean five times slower parsing
   parseStmt2 None = None
-  parseStmt2 (Some (t × s)) with stopper t
+  parseStmt2 (Some (tkns × s)) with stopper tkns
   ... | true = (Some ([t] × s))
-  ... | false = parseStmt3 (Some (t × s)) -- Now we want "(Some ([t] × (Seq s (parseStmt1 t))))", but we must first check that parseStmt1 gives a Some return
+  ... | false = parseStmt3 (Some (tkns × s)) -- Now we want "(Some ([t] × (Seq s (parseStmt1 t))))", but we must first check that parseStmt1 gives a Some return
 
   -- Another helper, since we need to make a Seq in second case above, but need to know we got back some Stmt and not a None option
   parseStmt3 None = None
   parseStmt3 (Some (tkns × s)) with parseStmt1 tkns
   ... | None = None
-  ... | Some (t × s2) = (Some ([t] × (Seq s s2)))
+  ... | Some (tkns' × s2) = (Some ([t] × (Seq s s2))) --Not sure what tkns' is doing here- should this be changed to [t] with non-empty tokens raising an error?
 
   -- Parses a single statement from the tokens; does the "heavy lifting" stmt parsing
   parseSingleStmt [t] = (Some ([t] × No-op)) -- don't know if I need this, but just want to catch errors
   parseSingleStmt ("while" :t: tkns) with (parseCnd (eat tkns "("))
   ... | None = None
-  ... | Some (tkns2 × c) = parseRestOfWhile c (eat (eat tkns2 ")") "{")
+  ... | Some (tkns' × c) = parseRestOfWhile c (eat (eat tkns' ")") "{")
   parseSingleStmt ("if" :t: tkns) with (parseCnd (eat tkns "("))
   ... | None = None
-  ... | Some (tkns2 × c) = parseRestOfIf c (eat (eat tkns2 ")") "{")
-  parseSingleStmt ("*" :t: tkns) with parseExp (eat (eat tkns (eatName tkns)) "=") -- A little cheaty since this sort of looks two tokens ahead
+  ... | Some (tkns' × c) = parseRestOfIf c (eat (eat tkns' ")") "{")
+  parseSingleStmt ("new " :t: tkns) with parseExp (eat (eat tkns (eatName tkns)) "=") -- A little cheaty since this sort of looks two tokens ahead
   ... | None = None
-  ... | Some (tkns2 × e) = Some ((eat tkns2 ";") × (AssignPtr (eatName tkns) e))
-  parseSingleStmt ("&" :t: tkns) with parseExp tkns
+  ... | Some (tkns' × e) = Some ((eat tkns' ";") × (AssignPtr (eatName tkns) e))
+  parseSingleStmt ("*" :t: tkns) with parseExp tkns
   ... | None = None
-  ... | Some (tkns2 × e) = parseRestOfWrite e (eat tkns2 "=")
+  ... | Some (tkns' × e) = parseRestOfWrite e (eat tkns' "=")
+  parseSingleStmt (name :t: "=" :t: "*" :t: tkns) with parseExp tkns --This really breaks the idea of looking only one ahead; could also be written to be part of a RestOfVar under the next line
+  ... | None = None
+  ... | Some (tkns' × e) = Some ((eat tkns' ";") × (AssignVar (name) (readAddress e)))
   parseSingleStmt tkns with parseExp (eat (eat tkns (eatName tkns)) "=") --This will catch any other errors, as eat will return [t] if it can't eat the expeted token, leading to parseExp returning None
   ... | None = None
-  ... | Some (tkns2 × e) = Some ((eat tkns2 ";") × (AssignVar Natural (eatName tkns) e))
+  ... | Some (tkns' × e) = Some ((eat tkns' ";") × (AssignVar (eatName tkns) e))
 
   -- Parses the rest of a multi-part statement
   
   parseRestOfWhile c tkns with parseStmt1 tkns
   ... | None = None
-  ... | Some (t × s) = Some ((eat t "}") × (While c s))
+  ... | Some (tkns' × s) = Some ((eat tkns' "}") × (While c s))
 
   parseRestOfIf c tkns with parseStmt1 tkns
   ... | None = None
-  ... | Some (t × s) = parseRestOfIfElse c s (eat tkns "}")
+  ... | Some (tkns' × s) = parseRestOfIfElse c s (eat tkns' "}")
 
   parseRestOfIfElse c s ("else" :t: tkns) with parseStmt1 (eat tkns "{")
   ... | None = None
-  ... | Some (t × s2) = Some ((eat t "}") × (IfElse c s s2))
+  ... | Some (tkns' × s2) = Some ((eat tkns' "}") × (IfElse c s s2))
   parseRestOfIfElse c s tkns = Some (tkns × (If c s))
 
   parseRestOfWrite e [t] = None
   parseRestOfWrite e tkns with parseExp tkns
   ... | None = None
-  ... | Some (t × e2) = Some ((eat t ";") × (WriteHeap e e2))
+  ... | Some (tkns' × e2) = Some ((eat tkns' ";") × (WriteHeap e e2))
 
   -- Top level parser function; calls the other parsers and converts from the option (token stmt) type to the appropriate stmt
   parseTokens : Tokens → Stmt
   parseTokens tkns with parseStmt1 tkns
   ... | None  = No-op --The program failed to parse
   ... | (Some ([t] × s)) = s
-  ... | (Some (t × s)) = (Seq No-op No-op) --Parser thinks it worked, but didn't finish parsing
+  ... | (Some (tkns' × s)) = (Seq No-op No-op) --Parser thinks it worked, but didn't finish parsing
 
   -- Main function; parses and then runs the program with empty intial RAM
   run : Tokens → RAM
-  run t = exec ([e] & [h]) (parseTokens t)
-
-
-
---- Extra Notes ---
--- No ++ is allowed, since right now that reads as a plus operator (solution would be to make it process to "++":t:tkns)
--- Tokenizer should split on ; , { } ( ) operators etc
+  run tkns = exec ([e] & [h]) (parseTokens tkns)
