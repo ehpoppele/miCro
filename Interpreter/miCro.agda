@@ -114,7 +114,7 @@ module Interpreter.miCro where
     plus : Exp → Exp → Exp
     const : Nat → Exp
     minus : Exp → Exp → Exp
-    times : Exp → Exp → Exp
+    times : Exp → Nat → Exp
 
   -- Conditions --
   data Cnd : Set where
@@ -161,7 +161,7 @@ module Interpreter.miCro where
   eval r (const n) = n
   eval r (plus e1 e2) = (eval r e1) + (eval r e2)
   eval r (minus e1 e2) = (eval r e1) - (eval r e2)
-  eval r (times e1 e2) = (eval r e1) * (eval r e2)
+  eval r (times e n) = (eval r e) * n
 
   -- Reduce, to simplify Cnd to boolean values --
   check : RAM → Cnd → Bool
@@ -254,9 +254,11 @@ module Interpreter.miCro where
   whileTest : exec ([e] & [h]) (While ((readVar "X") < (const 10)) (AssignVar "X" (plus (const 1) (readVar "X")))) ≡ ((Var "X" 10) :e: [e]) & [h]
   whileTest = refl 
 
+  {- removed since now multiplication is only by const
   -- Can't do much without multiple vars, but this repeatedly X as long as it is less than or equal to 32 --
   greatestLesserPower : exec (((Var "X" 2) :e: [e]) & [h]) (While ((readVar "X") <= (const 32)) (AssignVar "X" (times (readVar "X") (readVar "X")))) ≡ ((Var "X" 256) :e: [e]) & [h]
   greatestLesserPower = refl
+  -}
 
   -- Test with multiple Variables, based on Hoare Logic pdf from UW --
 

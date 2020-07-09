@@ -129,7 +129,7 @@ module Interpreter.miCro_parser where
   parseRestOfMult : Exp → Tokens → (OptionE (Pair Tokens Exp))
   parseAtom : Tokens → (OptionE (Pair Tokens Exp))
   parseVar : Tokens → (OptionE (Pair Tokens Exp))
-  parseConst : Tokens → (OptionE (Pair Tokens Exp))
+  parseNum : Tokens → (OptionE (Pair Tokens Nat))
 
   parseExp [t] = None "Expected an expression but tokens ended; possibly attempted to eat a token that wasn't there"-- need to make sure this works
   parseExp tkns = parseSum tkns
@@ -150,9 +150,9 @@ module Interpreter.miCro_parser where
   ... | None s = None s
   ... | Some (tkns' × e) = parseRestOfMult e tkns'
 
-  parseRestOfMult e ("*" :t: tkns) with parseConst tkns
+  parseRestOfMult e ("*" :t: tkns) with parseNum tkns
   ... | None s = None s
-  ... | Some (tkns' × e2) = Some (tkns' × (times e e2))
+  ... | Some (tkns' × n) = Some (tkns' × (times e n))
   parseRestOfMult e tkns = Some (tkns × e)
 
   parseAtom ("[" :t: tkns) with parseExp tkns
@@ -169,10 +169,10 @@ module Interpreter.miCro_parser where
   parseVar [t] = None "Empty tokens while parsing a var inside an expression; it shouldn't be possible to reach this line."
 
   -- Needed since parsing a mult has to then parse a num without possibility of parens or vars
-  parseConst (str :t: tkns) with isNumber (primStringToList str)
-  ... | true = Some (tkns × (const (stringToNat str)))
+  parseNum (str :t: tkns) with isNumber (primStringToList str)
+  ... | true = Some (tkns × stringToNat str)
   ... | false = None "Attempted multiplication by something other than a const valued number"
-  parseConst [t] = None "Attempted to multiply with empty tokens"
+  parseNum [t] = None "Attempted to multiply with empty tokens"
 
   {-# TERMINATING #-} --Note: Will need to add ability to process literal booleans (t/f) later, unless not needed
   parseCnd : Tokens → OptionE (Pair Tokens Cnd)
