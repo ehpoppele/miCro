@@ -31,5 +31,15 @@ module Interpreter.HoareTriples where
 
   basicExec : execsTo [e] (If ((readVar "X") == (const 0)) (AssignVar "X" (plus (readVar "X") (const 1)))) ((Var "X" 1) :e: [e])
   basicExec = execsCorrect refl
-  
-  
+
+  --I think this doesn't yet work for {false} s {anything}
+  data HoareTriple : Cnd → Stmt → Cnd → Set where
+    HoareTripleTrue : ∀ {e1 e2 : Env} {c1 c2 : Cnd} {s : Stmt}
+      → (execsTo e1 s e2)
+      → (checksTo e1 c1 true)
+      → (checksTo e2 c2 true)
+      ------------------------
+      → HoareTriple c1 s c2
+
+  basicTriple : HoareTriple ((readVar "x") == (const 3)) (AssignVar "x" (plus (readVar "x") (const 1))) ((readVar "x") == (const 4))
+  basicTriple = HoareTripleTrue (execsCorrect {!!}) (checksOut {!!}) (checksOut {!!})
