@@ -14,6 +14,7 @@ module Interpreter.HoareTriples where
   basicEval : evalsTo [e] (readVar "x") zero
   basicEval = evalsTrue refl
 
+  --Change checks to to checks true?
   data checksTo : Env → Cnd → Bool → Set where
     checksOut : ∀ {env : Env} {c : Cnd} {b : Bool}
       → (check (env & [h]) c) ≡ b
@@ -34,12 +35,24 @@ module Interpreter.HoareTriples where
 
   --I think this doesn't yet work for {false} s {anything}
   data HoareTriple : Cnd → Stmt → Cnd → Set where
-    HoareTripleTrue : ∀ {e1 e2 : Env} {c1 c2 : Cnd} {s : Stmt}
+    HoareTriplePrecise : ∀ {c1 c2 : Cnd} {s : Stmt}
+      → (e : Env)
+      → HoareTriple c1 s c2
+    HoareTripleGeneral : ∀ {e1 e2 : Env} {c1 c2 : Cnd} {s : Stmt}
       → (execsTo e1 s e2)
       → (checksTo e1 c1 true)
       → (checksTo e2 c2 true)
       ------------------------
       → HoareTriple c1 s c2
 
-  basicTriple : HoareTriple ((readVar "x") == (const 3)) (AssignVar "x" (plus (readVar "x") (const 1))) ((readVar "x") == (const 4))
-  basicTriple = HoareTripleTrue (execsCorrect {!!}) (checksOut {!!}) (checksOut {!!})
+{-
+  data HoareTriple : Cnd → Stmt → Cnd → Set where
+    HoareTripleTrue : ∀
+      → --evidence of some Env st. 
+  
+
+  HoareAlwaysTrue : ∀ (s : Stmt) (c1 c2 : Cnd)
+    → (∀ {e2 : Env} → (checksTo e2 c2 true))
+    ---------------------
+    → HoareTriple c1 s c2
+  HoareAlwaysTrue s c1 c2 x = HoareTripleTrue {!e1!} {!!} {!!} {!!} {!!} -}
