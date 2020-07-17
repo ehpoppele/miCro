@@ -23,6 +23,10 @@ module Interpreter.miCro where
   boolOr c1 true = true
   boolOr c1 c2 = false
 
+  boolIfElse : {A : Set} → Bool → A → A → A
+  boolIfElse true a b = a
+  boolIfElse false a b = b
+
   primitive
     primStringEquality : String → String → Bool
 
