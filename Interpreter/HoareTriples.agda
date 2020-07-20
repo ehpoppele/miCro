@@ -54,6 +54,22 @@ module Interpreter.HoareTriples where
     Only : StateSet → StateDisj
     _StOr_ : StateSet → StateDisj → StateDisj
 
+---Expression functions; used to test for comparisons between expressions
+
+  --This will test if a two given expressions are always equal;
+  --It will simplify nats and variables, and if there are variables
+  --that cannot be removed, then it will eval to false
+  --Use on canonical form doesn't seem to be an option given lack of tools to alphabetize variable order
+  --ExpEquality : Exp → Exp → Bool
+
+ --"Canonical" times, which applies times to an exp "at the lowest level" so that the given multiple is applied directly to each variable and absorbed by each const 
+  CTimes : Exp → Nat → Exp
+  CTimes (plus e1 e2) n = (plus (CTimes e1 n) (CTimes e2 n))
+  CTimes (minus e1 e2) n = (minus (CTimes e1 n) (CTimes e2 n))
+  CTimes (times e1 m) n = (times (CTimes e1 n) m)
+  CTimes (const m) n = (const (m * n))
+  CTimes (readVar str) n= (times (readVar str) n)
+
 
 --- Condition Functions! ---
 ---This all assumes conditions are in a canonical form, without Not and with Or on the outermost level only; also Or should be x Or (y Or ...)
@@ -64,7 +80,7 @@ module Interpreter.HoareTriples where
   CndFlip : Cnd → Cnd
   CndFlip -}
 
-  --This will need an overhaul soon
+  --This will need an overhaul now
   AlwaysTrue : Cnd → Bool
   AlwaysTrue (cndBool true) = true
   AlwaysTrue (cndBool false) = false
@@ -73,7 +89,12 @@ module Interpreter.HoareTriples where
   AlwaysTrue (Not c) with AlwaysTrue c --Don't have a boolNot function implemented yet; maybe should do that
   ... | true = false
   ... | false = true
-  AlwaysTrue ((readVar str1) == (readVar str2)) = primStringEquality str1 str2 --need to add more stuff here
+  AlwaysTrue (e1 == e2) = ExpEquality (CFExp e1) (CFExp e2)
+  AlwaysTrue (e1 != e2) with ExpEquality e1 e2
+  ... | true = false
+  ... | false = true
+  AlwaysTrue (e1 < e2) = ExpLessThan e1 e2
+  AlwaysTrue (e1 > e2) = ExpLessThan e2 e1
   AlwaysTrue other = false --Other comparisons currently not allowed, so get outta here
 
 --Finds state sets complying with the given non-Or condition
@@ -130,14 +151,17 @@ module Interpreter.HoareTriples where
 
   -- Replaces all instances of n*Var in e2 with e1
   ReplaceInExp : Nat → String → Exp → Exp → Exp
-  ReplaceInExp n var e1 (readVar str) = times e1 n
+  ReplaceInExp n1 var e1 (times (readVar str) n2) with primStringEquality var str
+  ... | false = (times (readVar str) n2)
+  ... | true = e1 --Need to fix this later; but for now it's technically safe to assume n1 = n2
   ReplaceInExp n var e1 (plus e2 e3) = plus (ReplaceInExp n var e1 e2) (ReplaceInExp n var e1 e3)
   ReplaceInExp n var e1 (minus e2 e3) = minus (ReplaceInExp n var e1 e2) (ReplaceInExp n var e1 e3)
   ReplaceInExp n var e1 (times e2 n2) = times (ReplaceInExp n var e1 e2) n2
   ReplaceInExp n var e1 e2 = e2 --All that remains are illegal heap ops, deprecated readVar++, and const 
 
   -- If string is a variable in Cnd, this multiplies the Cnd (assumed to be a comp)
-  -- By nat, then replaces all instances of nat*var in Cnd with exp, and returns that Cnd 
+  -- By nat, then replaces all instances of nat*var in Cnd with exp, and returns that Cnd
+  --- !!!!! Need to fix this; change so that instead of times its a "canonical times" that pushes the times down to the "lowest level" (closest to the variables/consts)
   ReplaceInCnd : Nat → String → Exp → Cnd → Cnd
   ReplaceInCnd n var e1 (e2 == e3) with boolOr (ContainsVar var e2) (ContainsVar var e3)
   ... | true = (ReplaceInExp n var e1 (times e2 n)) == (ReplaceInExp n var e1 (times e3 n))
@@ -154,6 +178,9 @@ module Interpreter.HoareTriples where
   ReplaceInCnd n var e otherCnd = cndBool false --Need to finish this?
 
   --Returns a modified version of the given condition, where the given restriction is taken into account
+  -- Currently these will sometimes lose their canonical form, which may be an issue
+  -- I don't think this function itself relies on the form, however, so maybe can be fixed
+  -- By just doing canonicalization later; before AlwaysTrue is evaluated?
   ModifyCnd : VarRestriction → Cnd → Cnd
   ModifyCnd vr (cndBool true) = (cndBool true)
   ModifyCnd vr (cndBool false) = (cndBool false)
@@ -164,17 +191,29 @@ module Interpreter.HoareTriples where
   ... | true = c And ((times (readVar var) k) != e1)
   ... | false = c
   ModifyCnd (VarRstr k var "<" e1) (e2 == e3) with WhichSideContainsVar var (e2 == e3)
-  ... | Left = (e2 == e3) Or (ReplaceInCnd k var (minus e1 (const 1)) ((plus e2 (const 1)) > e3))
+  ... | Left = (e2 == e3) And (ReplaceInCnd k var (minus e1 (const 1)) ((plus e2 (const 1)) > e3))
   ... | Right = (e2 == e3) And (ReplaceInCnd k var (minus e1 (const 1)) (e2 < (plus e3 (const 1)))) --trust me this works
   ... | NoSide = (e2 == e3)
-  ModifyCnd (VarRstr k var "<" e1) c with WhichSideContainsVar var c
-  ... | Left = c 
-  ... | Right = c
-  ... | NoSide = c
-  ModifyCnd (VarRstr k var ">" e1) c with WhichSideContainsVar var c
-  ... | Left = c
-  ... | Right = c
-  ... | NoSide = c
+  ModifyCnd (VarRstr k var "<" e1) (e2 < e3) with WhichSideContainsVar var (e2 < e3)
+  ... | Left = (e2 < e3) Or (ReplaceInCnd k var (minus e1 (const 1)) (e2 < e3)) --No plus one like before since we're dealing with a strict less than
+  ... | Right = (e2 < e3) And (ReplaceInCnd k var (minus e1 (const 1)) (e2 < e3))
+  ... | NoSide = (e2 < e3)
+  ModifyCnd (VarRstr k var "<" e1) (e2 > e3) with WhichSideContainsVar var (e2 > e3)
+  ... | Left = (e2 > e3) And (ReplaceInCnd k var (minus e1 (const 1)) (e2 > e3))
+  ... | Right = (e2 > e3) Or (ReplaceInCnd k var (minus e1 (const 1)) (e2 > e3))
+  ... | NoSide = (e2 > e3)
+  ModifyCnd (VarRstr k var ">" e1) (e2 == e3) with WhichSideContainsVar var (e2 == e3)
+  ... | Left = (e2 == e3) And (ReplaceInCnd k var (plus e1 (const 1)) ((minus e2 (const 1)) < e3))
+  ... | Right = (e2 == e3) And (ReplaceInCnd k var (plus e1 (const 1)) (e2 > (minus e3 (const 1)))) --trust me this works
+  ... | NoSide = (e2 == e3)
+  ModifyCnd (VarRstr k var ">" e1) (e2 > e3) with WhichSideContainsVar var (e2 > e3)
+  ... | Left = (e2 > e3) Or (ReplaceInCnd k var (plus e1 (const 1)) (e2 > e3))
+  ... | Right = (e2 > e3) And (ReplaceInCnd k var (plus e1 (const 1)) (e2 > e3))
+  ... | NoSide = (e2 > e3)
+  ModifyCnd (VarRstr k var ">" e1) (e2 < e3) with WhichSideContainsVar var (e2 < e3)
+  ... | Left = (e2 < e3) And (ReplaceInCnd k var (plus e1 (const 1)) (e2 < e3))
+  ... | Right = (e2 < e3) Or (ReplaceInCnd k var (plus e1 (const 1)) (e2 < e3))
+  ... | NoSide = (e2 < e3)
   ModifyCnd vr c = c --I don't even know what these other cases are, but I don't want to touch them
   
 

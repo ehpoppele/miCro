@@ -58,6 +58,13 @@ module Interpreter.miCro where
   suc n * m = (n * m) + m
   {-# BUILTIN NATTIMES _*_ #-}
 
+  -- Nat equality, for when a bool rather than an order is needed
+  NatEquality : Nat → Nat → Bool
+  NatEquality zero zero = true
+  NatEquality zero (suc n) = false
+  NatEquality (suc m) zero = false
+  NatEquality (suc m) (suc n) = NatEquality m n
+
   -- Comparison, between two natural numbers. M and N here represent Nats. Messy cases because of pos, neg, and zero --
   compare : Nat → Nat → Order
   compare zero zero = Equal
