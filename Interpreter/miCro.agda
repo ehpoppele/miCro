@@ -119,9 +119,9 @@ module Interpreter.miCro where
   -- Expressions, for Assigning Variables --
   data Exp : Set where
     readVar : String → Exp
-    readVar++ : String → Exp
-    derefVar : String → Exp
-    readAddress : Exp → Exp
+    readVar++ : String → Exp --can remove
+    derefVar : String → Exp --
+    readAddress : Exp → Exp --
     plus : Exp → Exp → Exp
     const : Nat → Exp
     minus : Exp → Exp → Exp
@@ -143,12 +143,13 @@ module Interpreter.miCro where
   -- Statements, making up the body of the code --
   data Stmt : Set where
     Seq : Stmt → Stmt → Stmt
-    If : Cnd → Stmt → Stmt
+    If : Cnd → Stmt → Stmt --
     IfElse : Cnd → Stmt → Stmt → Stmt
     While : Cnd → Stmt → Stmt
     AssignVar : String → Exp → Stmt
+    -- add read heap as stmt rather than exp
     WriteHeap : Exp → Exp → Stmt --First exp is address, second is value (could also be nat → exp...?)
-    AssignPtr : String → Exp → Stmt -- Adds the value to the end of the current heap and makes a ptr var to it
+    AssignPtr : String → Exp → Stmt -- change to new -- Adds the value to the end of the current heap and makes a ptr var to it
     No-op : Stmt
 
   --- --- Evaluation functions, including eval (applied to programs) and it's helper functions --- ---

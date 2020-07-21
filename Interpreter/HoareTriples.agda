@@ -1,6 +1,7 @@
 module Interpreter.HoareTriples where
 
   open import Interpreter.miCro
+  open import Interpreter.miCro_parser
   import Relation.Binary.PropositionalEquality as Eq
   open Eq using (_≡_; refl)
   open import Agda.Builtin.Bool
@@ -40,6 +41,7 @@ module Interpreter.HoareTriples where
 
   data StateSet : Set where
     NoState : StateSet --used when no state satisfies the conditions
+    --state set with all vars to zero?
     [s] : StateSet
     _:S:_ : VarRestriction → StateSet → StateSet
 
@@ -56,11 +58,56 @@ module Interpreter.HoareTriples where
 
 ---Expression functions; used to test for comparisons between expressions
 
+  --Condensed form functions, maybe will call this canonical later but it has no alphabetization for vars
+  --But for now just condenses an exp into one const and one term for each variable used
+  --const always at the end, but vars go in any order
+  --Order of functions is : linearize expressions, with split for minus
+  --Combine all like terms, pushing consts to end (still on appropriate side of minus division)
+  --Aplhabetization would then follow 
+  
+  --Exp Helper function takes first expression as either a const or var, and adds all like terms
+  --into that, removing them from the second expression, then returning that pair
+  --(extracting all readX/Const/etc from e2 and adding them to e1)
+  ExpConHelper : Exp → Exp → (Pair Exp Exp)
+  ExpConHelper
+
+  --Helper that returns back two chains of plus, the second of which is to be joined by a minus to the first
+  --Also "filters down" the times
+  --Pretty certain this will terminate but I should make sure
+  LinConHelper : (Exp × Exp) → Exp → (Exp × Exp)
+  LinConHelper (e1 × e2) (const n) = ((plus (const n) e1) × e2)
+  LinConHelper (e1 × e2) (readVar str) = LinConHelper (e1 × e2) (times (readVar str) 1) --This should never be the case for handling Hoare Triples, but useful if we need canonical forms otherwise
+  LinConHelper (e1 × e2) (times (const n) m) = ((plus (const (n * m)) e1) × e2)
+  LinConHelper (e1 × e2) (times (readVar str) n) = ((plus (times (readVar str) n) e1) × e2)
+  LinConHelper (e1 × e2) (times (plus e3 e4) n) = LinConHelper (e1 × e2) (plus (times e3 n) (times e4 n))
+  LinConHelper (e1 × e2) (times (minus e3 e4) n) = LinConHelper (e1 × e2) (minus (times e3 n) (times e4 n))
+  LinConHelper (e1 × e2) (times (times e3 m) n) = LinConHelper (e1 × e2)
+  LinConHelper (e1 × e2) (plus e3 e4) = LinConHelper (LinConHelper (e1 × e2) e4) e3
+  LinConHelper (e1 × e2) (minus e3 e4) = let (e1' × e2') = LinConHelper (e2 × e1) e4 in LinConHelper (e2' × e1') e3 --flip then flip back to get the stuff from e4 (being subtracted) on the opposite side
+
+  --Another helper that turns the exp from a tree into a more linear structure;
+  --Makes sure that all plus/minus is between a const/times of Var first, and then more plus/minus like a list
+  --Removes all instances of (plus (plus e1 e2) e3) etc
+  LinearizeExpression : Exp → Exp
+  LinearizeExpression e = let (e1' × e2') = LinConHelper (const zero × const zero) e in (minus e1' e2')
+
+  --Main function which iterates through the whole exp and makes calls to organize terms together
+  CFEMain : Exp → Exp
+  CFEMain (plus e1 e2) = let (e1' × e2') = (ExpConHelper e1 e2) in (plus (e1') (CFEMain e2'))
+
+  --Top-level function just calls the linearizing function and then passes to the main working function
+  ConFormExp : Exp → Exp
+  ConFormExp e = CFEMain (LinearizeExpression e)
+  
   --This will test if a two given expressions are always equal;
   --It will simplify nats and variables, and if there are variables
   --that cannot be removed, then it will eval to false
-  --Use on canonical form doesn't seem to be an option given lack of tools to alphabetize variable order
-  --ExpEquality : Exp → Exp → Bool
+  --Use of canonical form doesn't seem to be an option given lack of tools to alphabetize variable order?
+  ExpEquality : Exp → Exp → Bool
+  ExpEquality
+
+  ExpLessThan : Exp → Exp → Bool
+  ExpLessThan
 
  --"Canonical" times, which applies times to an exp "at the lowest level" so that the given multiple is applied directly to each variable and absorbed by each const 
   CTimes : Exp → Nat → Exp
@@ -89,7 +136,7 @@ module Interpreter.HoareTriples where
   AlwaysTrue (Not c) with AlwaysTrue c --Don't have a boolNot function implemented yet; maybe should do that
   ... | true = false
   ... | false = true
-  AlwaysTrue (e1 == e2) = ExpEquality (CFExp e1) (CFExp e2)
+  AlwaysTrue (e1 == e2) = ExpEquality (ConFormExp e1) (ConFormExp e2)
   AlwaysTrue (e1 != e2) with ExpEquality e1 e2
   ... | true = false
   ... | false = true
