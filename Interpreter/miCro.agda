@@ -29,6 +29,7 @@ module Interpreter.miCro where
 
   primitive
     primStringEquality : String → String → Bool
+    primCharToNat : Char → Nat
 
   -- Orders, Used for compare function --
   data Order : Set where
@@ -58,12 +59,18 @@ module Interpreter.miCro where
   suc n * m = (n * m) + m
   {-# BUILTIN NATTIMES _*_ #-}
 
-  -- Nat equality, for when a bool rather than an order is needed
+  -- Nat comparisons, for when a bool rather than an order is needed
   NatEquality : Nat → Nat → Bool
   NatEquality zero zero = true
   NatEquality zero (suc n) = false
   NatEquality (suc m) zero = false
   NatEquality (suc m) (suc n) = NatEquality m n
+
+  NatLess : Nat → Nat → Bool
+  NatLess zero zero = false
+  NatLess zero (suc n) = true
+  NatLess (suc m) zero = false
+  NatLess (suc m) (suc n) = NatLess m n
 
   -- Comparison, between two natural numbers. M and N here represent Nats. Messy cases because of pos, neg, and zero --
   compare : Nat → Nat → Order
