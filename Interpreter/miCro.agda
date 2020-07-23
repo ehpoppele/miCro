@@ -29,7 +29,6 @@ module Interpreter.miCro where
 
   primitive
     primStringEquality : String → String → Bool
-    primCharToNat : Char → Nat
 
   -- Orders, Used for compare function --
   data Order : Set where
