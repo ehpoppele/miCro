@@ -66,7 +66,7 @@ module Expressions where
   CFECombineMain (plus e1 e2) with CFECombineTerms e1 e2
   ... | (e1' × const zero) = e1'
   ... | (e1' × (times (readVar str) n)) = plus e1' (times (readVar str) n)
-  ... | (e1' × (plus e2' e3')) = plus e1 (CFECombineMain (plus e2' e3'))
+  ... | (e1' × (plus e2' e3')) = plus e1' (CFECombineMain (plus e2' e3'))
   ... | (e1' × e2') = plus e1' e2' --Don't think we should ever reach this based on the return types of CFECombineTerms
   CFECombineMain e = const 0 --again this should never be reached
 
