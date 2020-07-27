@@ -8,6 +8,27 @@ module HoareTriples where
   open import Agda.Builtin.Bool
 
 ------------------------------------
+  data SymbolicEnv : Set where
+    _<S_ : Exp → Exp → SymbolicEnv
+    _<=S_ : Exp → Exp → SymbolicEnv
+    _>S_ : Exp → Exp → SymbolicEnv
+    _>=S_ : Exp → Exp → SymbolicEnv
+    _==S_ : Exp → Exp → SymbolicEnv
+    _!=S_ : Exp → Exp → SymbolicEnv
+    trueS : SymbolicEnv
+    falseS : SymbolicEnv
+    _andS_ : SymbolicEnv → SymbolicEnv → SymbolicEnv
+    _orS_ : SymbolicEnv → SymbolicEnv → SymbolicEnv
+
+  CombineEnv : SymbolicEnv → SymbolicEnv → SymbolicEnv
+  CombineEnv falseS e = falseS
+  CombineEnv e falseS = falseS
+  CombineEnv trueS e = e
+  CombineEnv e trueS = e
+  CombineEnv (e1 orS e2) e3 = (CombineEnv e1 e3) orS (CombineEnv e2 e3)
+  CombineEnv e1 (e2 orS e3) = (CombineEnv e1 e2) orS (CombineEnv e1 e3)
+  CombineEnv e1 e2 = e1 andS e2
+
 
   data VarRestriction : Set where
     VarRstr : Nat → String → String → Exp → VarRestriction --Could clean this up; for now it's Multiplier → varName → ComparisonString → thing compared to. Maybe make comparisons a distinct thing/subset of Cnd?
@@ -58,6 +79,7 @@ module HoareTriples where
   AlwaysTrue (e1 > e2) = ExpLessThan e2 e1
   AlwaysTrue other = false --Other comparisons currently not allowed, so get outta here
 
+{-
 --Finds state sets complying with the given non-Or condition
   FindStates : Cnd → StateSet
   FindStates (cndBool true) = [s]
@@ -68,11 +90,22 @@ module HoareTriples where
   FindStates ((times (readVar str) k) > e) = (VarRstr k str ">" e) :S: [s]
   FindStates ((times (readVar str) k) != e) = (VarRstr k str "!=" e) :S: [s]
   FindStates other = NoState --Currently not allowing any other conditions to keep it simple
+-}
 
 --Finds state sets complying with the given condition; handles Or then passes off the rest
-  StatesSatisfying : Cnd → StateDisj
-  StatesSatisfying (c1 Or c2) = (FindStates c1) StOr (StatesSatisfying c2)
-  StatesSatisfying c = Only (FindStates c)
+--Essentially transforms a Cnd into a the minimum formula which upholds the Cnd
+  StatesSatisfying : Cnd → SymbolicEnv
+  StatesSatisfying (c1 Or c2) = (StatesSatisfying c1) orS (StatesSatisfying c2)
+  StatesSatisfying (cndBool true) = trueS
+  StatesSatisfying (cndBool false) = falseS
+  StatesSatisfying (c1 And c2) = CombineEnv (StatesSatisfying c1) (StatesSatisfying c2)
+  StatesSatisfying ((times (readVar str) k) == e) = ((times (readVar str) k) ==S e)
+  StatesSatisfying ((times (readVar str) k) < e) = ((times (readVar str) k) <S e)
+  StatesSatisfying ((times (readVar str) k) <= e) = ((times (readVar str) k) <=S e)
+  StatesSatisfying ((times (readVar str) k) > e) = ((times (readVar str) k) >S e)
+  StatesSatisfying ((times (readVar str) k) >= e) = ((times (readVar str) k) >=S e)
+  StatesSatisfying ((times (readVar str) k) != e) = ((times (readVar str) k) !=S e) 
+  StatesSatisfying other = falseS --Currently not allowing any other conditions to keep it simple
 
   --Checks to see if the given expression contains the given variable,
   --so we know when we have to replace or modify conditions
@@ -168,26 +201,21 @@ module HoareTriples where
   ModifyCnd vr c = c --I don't even know what these other cases are, but I don't want to touch them
 
 
-  --Will return false if there is any state from the Disj in which Cnd does not hold, and true otherwise
-  --This is where the AllStates([s])/NoState thing kinda breaks down, since everywhere else it makes since, I think,
-  --To attach state restrictions to [s] (if a program gets the set of all states, and assigns x=3, it just attaches
-  --That restriction to [s]), but now, it would make more sense to have VarRstr :S: NoState, since we are checking
-  --for states which violate the Cnd, which NoState will never do, and [s] will most often do
-  --The idea here is that state restrictions are consumed and used to modify the condition until we reach the [s] case,
-  --Where the condition will now read as AlwaysTrue if the it met the restrictions (eg, rstr x =4, cnd x < 5 becomes cnd 4 < 5, reads as AlwaysTrue)
+  --Will return false if there is any state from the SymbolicEnv in which Cnd does not hold, and true otherwise
+  --The idea here is that state restrictions (comparisons) are consumed and used to modify the condition until they are all "absorbed"
+  --Where the condition will now read as AlwaysTrue if the it met the restrictions (eg, rstr x = 4, cnd x < 5 becomes cnd 4 < 5, reads as AlwaysTrue)
   {-# TERMINATING #-}
-  StDisjSatisfiesCnd : StateDisj → Cnd → Bool
-  StDisjSatisfiesCnd (Only NoState) c = true
-  StDisjSatisfiesCnd (Only [s]) c = AlwaysTrue c
-  StDisjSatisfiesCnd (st1 StOr st2) c =  boolOr (StDisjSatisfiesCnd (Only st1) c) (StDisjSatisfiesCnd st2 c)
-  StDisjSatisfiesCnd (Only (vr :S: states)) c = StDisjSatisfiesCnd (Only states) (ModifyCnd vr c)
+  SEnvSatisfiesCnd : SymbolicEnv → Cnd → Bool
+  SEnvSatisfiesCnd falseS c = true
+  SEnvSatisfiesCnd (e1 orS e2) c =  boolAnd (SEnvSatisfiesCnd e1 c) (SEnvSatisfiesCnd e2 c)
+  SEnvSatisfiesCnd (Only (vr :S: states)) c = StDisjSatisfiesCnd (Only states) (ModifyCnd vr c) -- fix this
 
 
 
   --An object which provides evidence that the predicate holds in all states in the state set
-  data ConditionHolds : StateDisj → Cnd → Set where
-    ConditionHoldsProof : ∀ {st : StateDisj} {c : Cnd}
-      → (StDisjSatisfiesCnd st c ≡ true)
+  data ConditionHolds : SymbolicEnv → Cnd → Set where
+    ConditionHoldsProof : ∀ {st : SymbolicEnv} {c : Cnd}
+      → (SEnvSatisfiesCnd st c ≡ true)
       -----------------------------
       → ConditionHolds st c
 
