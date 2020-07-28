@@ -303,7 +303,7 @@ module Interpreter.miCro_parser where
   parseRestOfIfElse c s ("else" :t: tkns) with parseStmt1 (eat tkns "{")
   ... | None str = None str
   ... | Some (tkns' × s2) = Some ((eat tkns' "}") × (IfElse c s s2))
-  parseRestOfIfElse c s tkns = Some (tkns × (If c s))
+  parseRestOfIfElse c s tkns = Some (tkns × (IfElse c s No-op))
 
   parseRestOfWrite e tkns with parseExp tkns
   ... | None str = None str

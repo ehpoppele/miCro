@@ -29,27 +29,6 @@ module HoareTriples where
   CombineEnv e1 (e2 orS e3) = (CombineEnv e1 e2) orS (CombineEnv e1 e3)
   CombineEnv e1 e2 = e1 andS e2
 
-
-  data VarRestriction : Set where
-    VarRstr : Nat → String → String → Exp → VarRestriction --Could clean this up; for now it's Multiplier → varName → ComparisonString → thing compared to. Maybe make comparisons a distinct thing/subset of Cnd?
-
-  data StateSet : Set where
-    NoState : StateSet --used when no state satisfies the conditions
-    --state set with all vars to zero?
-    [s] : StateSet
-    _:S:_ : VarRestriction → StateSet → StateSet
-
-  StateJoin : StateSet → StateSet → StateSet
-  StateJoin NoState s = NoState
-  StateJoin s NoState = NoState
-  StateJoin [s] s = s
-  StateJoin s [s] = s
-  StateJoin (v1 :S: s1) (v2 :S: s2) = StateJoin s1 (v1 :S: (v2 :S: s2))
-
-  data StateDisj : Set where
-    Only : StateSet → StateDisj
-    _StOr_ : StateSet → StateDisj → StateDisj
-
 --- Condition Functions! ---
 ---This all assumes conditions are in a canonical form, without Not and with Or on the outermost level only; also Or should be x Or (y Or ...)
 ---Canonical Form also assumes all comparisons have one side with a single variable (and mult by const; by 1 at minimum); not sure how this would work out...
@@ -57,10 +36,6 @@ module HoareTriples where
 
 -- Will later separate some of these (those dealing only with Cnds and not states as well) into a separate file
 -- That file will hopefully include a canonicalization for conditions
-
-{- will take a Cnd to which a NOT was attached and simplify so the NOT can be removed
-  CndFlip : Cnd → Cnd
-  CndFlip -}
 
   --This will need an overhaul now
   AlwaysTrue : Cnd → Bool
@@ -78,19 +53,6 @@ module HoareTriples where
   AlwaysTrue (e1 < e2) = ExpLessThan e1 e2
   AlwaysTrue (e1 > e2) = ExpLessThan e2 e1
   AlwaysTrue other = false --Other comparisons currently not allowed, so get outta here
-
-{-
---Finds state sets complying with the given non-Or condition
-  FindStates : Cnd → StateSet
-  FindStates (cndBool true) = [s]
-  FindStates (cndBool false) = NoState
-  FindStates (c1 And c2) = StateJoin (FindStates c1) (FindStates c2)
-  FindStates ((times (readVar str) k) == e) = (VarRstr k str "==" e) :S: [s]
-  FindStates ((times (readVar str) k) < e) = (VarRstr k str "<" e) :S: [s]
-  FindStates ((times (readVar str) k) > e) = (VarRstr k str ">" e) :S: [s]
-  FindStates ((times (readVar str) k) != e) = (VarRstr k str "!=" e) :S: [s]
-  FindStates other = NoState --Currently not allowing any other conditions to keep it simple
--}
 
 --Finds state sets complying with the given condition; handles Or then passes off the rest
 --Essentially transforms a Cnd into a the minimum formula which upholds the Cnd
@@ -161,44 +123,44 @@ module HoareTriples where
   ... | false = (e2 != e3)
   ReplaceInCnd n var e otherCnd = cndBool false --Need to finish this?
 
-  --Returns a modified version of the given condition, where the given restriction is taken into account
-  -- Currently these will sometimes lose their canonical form, which may be an issue
+  --Returns a modified version of the given condition, where the given SEnv is taken into account as a restriction
+  -- Currently these will sometimes lose their canonical form, which may be an issue, but so far isn't
   -- I don't think this function itself relies on the form, however, so maybe can be fixed
   -- By just doing canonicalization later; before AlwaysTrue is evaluated?
-  ModifyCnd : VarRestriction → Cnd → Cnd
-  ModifyCnd vr (cndBool true) = (cndBool true)
-  ModifyCnd vr (cndBool false) = (cndBool false)
-  ModifyCnd vr (c1 Or c2) = (ModifyCnd vr c1) Or (ModifyCnd vr c2)
-  ModifyCnd vr (c1 And c2) = (ModifyCnd vr c1) And (ModifyCnd vr c2)
-  ModifyCnd (VarRstr k var "==" e1) c = ReplaceInCnd k var e1 c
-  ModifyCnd (VarRstr k var "!=" e1) c with CndContainsVar var c
+  ModifyCnd : SymbolicEnv → Cnd → Cnd
+  ModifyCnd s (cndBool true) = (cndBool true)
+  ModifyCnd s (cndBool false) = (cndBool false)
+  ModifyCnd s (c1 Or c2) = (ModifyCnd s c1) Or (ModifyCnd s c2) --We shouldn't be getting either of these cases based on how this is used in SEnvSatisfies
+  ModifyCnd s (c1 And c2) = (ModifyCnd s c1) And (ModifyCnd s c2) --But I'm writing them out in case for clarity and in case this function is later used for anything else
+  ModifyCnd ((times (readVar var) k) ==S e1) c = ReplaceInCnd k var e1 c
+  ModifyCnd ((times (readVar var) k) !=S e1) c with CndContainsVar var c
   ... | true = c And ((times (readVar var) k) != e1)
   ... | false = c
-  ModifyCnd (VarRstr k var "<" e1) (e2 == e3) with WhichSideContainsVar var (e2 == e3)
+  ModifyCnd ((times (readVar var) k) <S e1) (e2 == e3) with WhichSideContainsVar var (e2 == e3)
   ... | Left = (e2 == e3) And (ReplaceInCnd k var (minus e1 (const 1)) ((plus e2 (const 1)) > e3))
   ... | Right = (e2 == e3) And (ReplaceInCnd k var (minus e1 (const 1)) (e2 < (plus e3 (const 1)))) --trust me this works
   ... | NoSide = (e2 == e3)
-  ModifyCnd (VarRstr k var "<" e1) (e2 < e3) with WhichSideContainsVar var (e2 < e3)
+  ModifyCnd ((times (readVar var) k) <S e1) (e2 < e3) with WhichSideContainsVar var (e2 < e3)
   ... | Left = (e2 < e3) Or (ReplaceInCnd k var (minus e1 (const 1)) (e2 < e3)) --No plus one like before since we're dealing with a strict less than
   ... | Right = (e2 < e3) And (ReplaceInCnd k var (minus e1 (const 1)) (e2 < e3))
   ... | NoSide = (e2 < e3)
-  ModifyCnd (VarRstr k var "<" e1) (e2 > e3) with WhichSideContainsVar var (e2 > e3)
+  ModifyCnd ((times (readVar var) k) <S e1) (e2 > e3) with WhichSideContainsVar var (e2 > e3)
   ... | Left = (e2 > e3) And (ReplaceInCnd k var (minus e1 (const 1)) (e2 > e3))
   ... | Right = (e2 > e3) Or (ReplaceInCnd k var (minus e1 (const 1)) (e2 > e3))
   ... | NoSide = (e2 > e3)
-  ModifyCnd (VarRstr k var ">" e1) (e2 == e3) with WhichSideContainsVar var (e2 == e3)
+  ModifyCnd ((times (readVar var) k) >S e1) (e2 == e3) with WhichSideContainsVar var (e2 == e3)
   ... | Left = (e2 == e3) And (ReplaceInCnd k var (plus e1 (const 1)) ((minus e2 (const 1)) < e3))
   ... | Right = (e2 == e3) And (ReplaceInCnd k var (plus e1 (const 1)) (e2 > (minus e3 (const 1)))) --trust me this works
   ... | NoSide = (e2 == e3)
-  ModifyCnd (VarRstr k var ">" e1) (e2 > e3) with WhichSideContainsVar var (e2 > e3)
+  ModifyCnd ((times (readVar var) k) >S e1) (e2 > e3) with WhichSideContainsVar var (e2 > e3)
   ... | Left = (e2 > e3) Or (ReplaceInCnd k var (plus e1 (const 1)) (e2 > e3))
   ... | Right = (e2 > e3) And (ReplaceInCnd k var (plus e1 (const 1)) (e2 > e3))
   ... | NoSide = (e2 > e3)
-  ModifyCnd (VarRstr k var ">" e1) (e2 < e3) with WhichSideContainsVar var (e2 < e3)
+  ModifyCnd ((times (readVar var) k) >S e1) (e2 < e3) with WhichSideContainsVar var (e2 < e3)
   ... | Left = (e2 < e3) And (ReplaceInCnd k var (plus e1 (const 1)) (e2 < e3))
   ... | Right = (e2 < e3) Or (ReplaceInCnd k var (plus e1 (const 1)) (e2 < e3))
   ... | NoSide = (e2 < e3)
-  ModifyCnd vr c = c --I don't even know what these other cases are, but I don't want to touch them
+  ModifyCnd vr c = c --The Env at this point should be a comparison between a var and expression, so we shouldn't reac these cases
 
 
   --Will return false if there is any state from the SymbolicEnv in which Cnd does not hold, and true otherwise
@@ -207,10 +169,10 @@ module HoareTriples where
   {-# TERMINATING #-}
   SEnvSatisfiesCnd : SymbolicEnv → Cnd → Bool
   SEnvSatisfiesCnd falseS c = true
+  SEnvSatisfiesCnd trueS c = (AlwaysTrue c)
   SEnvSatisfiesCnd (e1 orS e2) c =  boolAnd (SEnvSatisfiesCnd e1 c) (SEnvSatisfiesCnd e2 c)
-  SEnvSatisfiesCnd (Only (vr :S: states)) c = StDisjSatisfiesCnd (Only states) (ModifyCnd vr c) -- fix this
-
-
+  SEnvSatisfiesCnd (e1 andS e2) c = SEnvSatisfiesCnd e2 (ModifyCnd e1 c) --Assuming the Envs are in proper form, e1 will be an atomic and e2 could be an atomic or another and
+  SEnvSatisfiesCnd comp c = SEnvSatisfiesCnd trueS (ModifyCnd comp c) --All other symbolic constructors are comparisons, so we 
 
   --An object which provides evidence that the predicate holds in all states in the state set
   data ConditionHolds : SymbolicEnv → Cnd → Set where
@@ -218,6 +180,51 @@ module HoareTriples where
       → (SEnvSatisfiesCnd st c ≡ true)
       -----------------------------
       → ConditionHolds st c
+
+  --New type used for symbolic check function
+  --Always is for when the Cnd is always true in all states represented by the symbolicEnv
+  --Never is similar, and Sometimes is when it holds in some but not all of the states (eg, SE is x < 4, cnd is x == 2)
+  data HoldsWhen : Set where
+    Always : HoldsWhen
+    Sometimes : HoldsWhen
+    Never : HoldsWhen
+
+  --Helper function for when the condition could be Never or Sometimes
+  SymbolicCheck2 : SymbolicEnv → Cnd → HoldsWhen
+  SymbolicCheck2 env c with SEnvSatisfiesCnd env (Not c) --This is when we will Canonical Forms for Cnds; could also only finish the FlipCnd function for this part
+  ... | true = Never
+  ... | false = Sometimes
+
+  -- Symbolic version of the check function
+  SymbolicCheck : SymbolicEnv → Cnd → HoldsWhen
+  SymbolicCheck falseS c = Never --I'm not sure this is right at all, but if we have false at any point we will have false at the end so it doesn't matter
+  SymbolicCheck env c with SEnvSatisfiesCnd env c
+  ... | true = Always
+  ... | false = SymbolicCheck2 env c
+
+  --The main function for symbolic execution, this modifies the Env appropriately based on variable changes
+  --Makes use of lVars currently?
+  SymbolicUpdate : SymbolicEnv → String → Exp → SymbolicEnv
+  SymbolicUpdate falseS str e = falseS
+  SymbolicUpdate trueS str e = ((times (readVar str) 1) ==S e)
+  SymbolicUpdate (env1 orS env2) str e = ((SymbolicUpdate env1 str e) orS (SymbolicUpdate env2 str e))
+  SymbolicUpdate (env1 andS env2) str e = ((SymbolicUpdate env1 str e) andS (SymbolicUpdate env2 str e))
+  SymbolicUpdate comp str e = 
+
+  -- Functions similar to exec, but different rules on changing the Env; also while is not allowed at present (is skipped over)
+  SymbolicExec : SymbolicEnv → Stmt → SymbolicEnv
+  SymbolicExec env (Seq s1 s2) = SymbolicExec (SymbolicExec env s1) s2
+  SymbolicExec env (IfElse c s1 s2) with (SymbolicCheck env c)
+  ...                         | Always = SymbolicExec env s1
+  ...                         | Never = SymbolicExec env s2
+  ...                         | Sometimes = (SymbolicExec env s1) orS (SymbolicExec env s2) --This might break the form of the Env? I think treed (instead of listed) orS are okay, but I'll check...
+  SymbolicExec env (While c s) with (SymbolicCheck env c)
+  ... | false = env
+  ... | true = env -- SymbolicExec r (Seq s (While c s)) -- skipped for now
+  SymbolicExec env (AssignVar str e) = (SymbolicUpdate env str e)
+  SymbolicExec r other = r --Heaps ops currently not allowed
+
+  
 
 {- --Assumes c1 and c2 are in canonical form (canonicalization function not yet written)
   data HoareTripleStateSet : Cnd → Stmt → Cnd → Set where

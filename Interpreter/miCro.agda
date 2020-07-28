@@ -149,7 +149,6 @@ module Interpreter.miCro where
   -- Statements, making up the body of the code --
   data Stmt : Set where
     Seq : Stmt → Stmt → Stmt
-    If : Cnd → Stmt → Stmt --
     IfElse : Cnd → Stmt → Stmt → Stmt
     While : Cnd → Stmt → Stmt
     AssignVar : String → Exp → Stmt
@@ -240,9 +239,6 @@ module Interpreter.miCro where
   {-# TERMINATING #-} --Not actually guaranteed to terminate, because of while; need to be careful writing programs or it will basically freeze my computer
   exec : RAM → Stmt → RAM
   exec r (Seq s1 s2) = exec (exec r s1) s2
-  exec r (If c s) with (check r c)
-  ...                 | true = exec r s
-  ...                 | false = r
   exec r (IfElse c s1 s2) with (check r c)
   ...                         | true = exec r s1
   ...                         | false = exec r s2
@@ -262,7 +258,7 @@ module Interpreter.miCro where
   test1 : ∀ ( n : Nat ) → exec  (((Var "X" n) :e: [e]) & [h]) (Seq (AssignVar "X" (const 1)) (AssignVar "X" (readVar++ "X"))) ≡ ((Var "X" 2) :e: [e]) & [h]
   test1 n = refl
 
-  test2 : exec ([e] & [h]) (If ((readVar "X") == (const 0)) (AssignVar "X" (plus (readVar "X") (const 1)))) ≡ ((Var "X" 1) :e: [e]) & [h]
+  test2 : exec ([e] & [h]) (IfElse ((readVar "X") == (const 0)) (AssignVar "X" (plus (readVar "X") (const 1))) No-op) ≡ ((Var "X" 1) :e: [e]) & [h]
   test2 = refl
 
   test3 : exec ([e] & [h]) (While ((readVar "X") == (const 0)) (AssignVar "X" (plus (readVar "X") (const 1)))) ≡ ((Var "X" 1) :e: [e]) & [h]
