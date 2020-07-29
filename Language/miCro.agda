@@ -1,6 +1,6 @@
 -- Code for basic C-style language in agda --
 
-module Interpreter.miCro where
+module Language.miCro where
 
   import Relation.Binary.PropositionalEquality as Eq
   open Eq using (_≡_; refl) -- For test programs
@@ -26,9 +26,6 @@ module Interpreter.miCro where
   boolIfElse : {A : Set} → Bool → A → A → A
   boolIfElse true a b = a
   boolIfElse false a b = b
-
-  primitive
-    primStringEquality : String → String → Bool
 
   -- Orders, Used for compare function --
   data Order : Set where
@@ -58,6 +55,11 @@ module Interpreter.miCro where
   suc n * m = (n * m) + m
   {-# BUILTIN NATTIMES _*_ #-}
 
+  primitive
+    primStringEquality : String → String → Bool
+    primStringAppend : String → String → String
+    primShowNat : Nat → String
+
   -- Nat comparisons, for when a bool rather than an order is needed
   NatEquality : Nat → Nat → Bool
   NatEquality zero zero = true
@@ -80,7 +82,7 @@ module Interpreter.miCro where
 
   --- --- Syntax part of miCro, these (along with integers) are used to actually write the code --- ---
 
-  
+
   -- Variable type identifier
   -- Used in the variable but removed from other functions since pointers and nats are identical. Keeping it in in case it's useful later
   data VarType : Set where
@@ -145,7 +147,7 @@ module Interpreter.miCro where
     _>_ : Exp → Exp → Cnd
     _<=_ : Exp → Exp → Cnd
     _>=_ : Exp → Exp → Cnd
-  
+
   -- Statements, making up the body of the code --
   data Stmt : Set where
     Seq : Stmt → Stmt → Stmt
@@ -158,7 +160,7 @@ module Interpreter.miCro where
     No-op : Stmt
 
   --- --- Evaluation functions, including eval (applied to programs) and it's helper functions --- ---
-  
+
   --Reduce Exp, to simplify Exp to const values --
   {-# TERMINATING #-} -- For some reason adding heaps has broken the termination on this, even though it's basically still the same
   eval : RAM → Exp → Nat
@@ -232,8 +234,8 @@ module Interpreter.miCro where
   -- Add to heap function, appending the nat to the end of the heap
   addToHeap : Heap → Nat → Heap
   addToHeap [h] x = (x :H: [h])
-  addToHeap (n :H: h) x = n :H: (addToHeap h x) 
-  
+  addToHeap (n :H: h) x = n :H: (addToHeap h x)
+
 
   -- Evaluation function, taking value of variable and code for input, producing value of variable at the end --
   {-# TERMINATING #-} --Not actually guaranteed to terminate, because of while; need to be careful writing programs or it will basically freeze my computer
@@ -254,7 +256,7 @@ module Interpreter.miCro where
   -- Everything has to be written on one line I think since agda pays attention to white space --
   -- form is exec (code) (init x) ≡ expected outcome --
   -- Everything is nicely reflexive; intrinsic proofs I guess based on the typing? --
-  
+
   test1 : ∀ ( n : Nat ) → exec  (((Var "X" n) :e: [e]) & [h]) (Seq (AssignVar "X" (const 1)) (AssignVar "X" (readVar++ "X"))) ≡ ((Var "X" 2) :e: [e]) & [h]
   test1 n = refl
 
@@ -266,7 +268,7 @@ module Interpreter.miCro where
 
 
   whileTest : exec ([e] & [h]) (While ((readVar "X") < (const 10)) (AssignVar "X" (plus (const 1) (readVar "X")))) ≡ ((Var "X" 10) :e: [e]) & [h]
-  whileTest = refl 
+  whileTest = refl
 
   {- removed since now multiplication is only by const
   -- Can't do much without multiple vars, but this repeatedly X as long as it is less than or equal to 32 --
@@ -283,4 +285,3 @@ module Interpreter.miCro where
   heapTest1 : exec ([e] & [h]) (Seq (AssignPtr "x" (const 10)) (AssignVar "y" (derefVar "x"))) ≡ ((Var "x" 0) :e: (Var "y" 10) :e: [e]) & (10 :H: [h])
   heapTest1 = refl
 -- To Add: Rules on equivalence of Env; if Env A contains Env B, then A ≡ B? or some similar relation, so that rhs of above statement/proofs can be condensed to only 1 variable --
-

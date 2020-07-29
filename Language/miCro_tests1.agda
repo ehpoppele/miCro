@@ -1,6 +1,6 @@
-open import Interpreter.miCro_tokenizer
-open import Interpreter.miCro_parser
-open import Interpreter.miCro
+open import Language.miCro_tokenizer
+open import Language.miCro_parser
+open import Language.miCro
 open import Agda.Builtin.Bool
 import Relation.Binary.PropositionalEquality as Eq
 open Eq using (_≡_; refl) -- For test programs
@@ -65,7 +65,7 @@ plusTwoTest n =
   (Var Natural "x" (n + (1 + 1)) :e: [e]) & [h]
   ∎
 -}
-  
+
 
 {-
 squareTest1 : (exec (((Var Natural "input" 8) :e: [e]) & [h]) (parseTokens (tokenize sumSquare))) ≡ ((Var Natural "input" 0) :e: (Var Natural "sum" 64) :e: [e]) & _

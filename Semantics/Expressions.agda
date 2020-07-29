@@ -1,7 +1,7 @@
-module Expressions where
+module Semantics.Expressions where
 
-  open import Interpreter.miCro
-  open import Interpreter.miCro_parser
+  open import Language.miCro
+  open import Language.miCro_parser
   open import Agda.Builtin.Bool
 
   ---String Functions, included here since so far only expressions use these
@@ -17,6 +17,8 @@ module Expressions where
 
   StringAlphaCompare : String → String → Order
   StringAlphaCompare str1 str2 = CharListCompare (primStringToList str1) (primStringToList str2)
+
+
 
   --- Canonical Forms for Expressions ---
   -- Canonicalization works by first "linearizing" (changing to one minus joining two chains of plus, so minimal "tree-like" structures are involved)
@@ -164,7 +166,7 @@ module Expressions where
 
   -- Replaces all instances of n*Var in e2 with e1
   -- Canonical forms are not necessary for this, but will only work with var*n directly, not times (plus var something) n, etc.
-  -- So At minimum CTimes should be applied 
+  -- So At minimum CTimes should be applied
   ReplaceInExp : Nat → String → Exp → Exp → Exp
   ReplaceInExp n1 var e1 (times (readVar str) n2) with primStringEquality var str
   ... | false = (times (readVar str) n2)
@@ -174,3 +176,21 @@ module Expressions where
   ReplaceInExp n var e1 (times e2 n2) = times (ReplaceInExp n var e1 e2) n2
   ReplaceInExp n var e1 e2 = e2 --All that remains are illegal heap ops, deprecated readVar++, and const
 
+  --Renames all instances of str in the exp with str with nat appended
+  RenameInExp : Nat → Exp → String → Exp
+  RenameInExp n1 (times (readVar str) n2) var with primStringEquality str var
+  ... | false = (times (readVar str) n2)
+  ... | true = (times (readVar (primStringAppend str (primShowNat n1))) n2)
+  RenameInExp n (plus e1 e2) var = plus (RenameInExp n e1 var) (RenameInExp n e2 var)
+  RenameInExp n (minus e1 e2) var = minus (RenameInExp n e1 var) (RenameInExp n e2 var)
+  RenameInExp n (times e1 n2) var = times (RenameInExp n e1 var) n2
+  RenameInExp n e1 var = e1 --All that remains are illegal heap ops, deprecated readVar++, and const
+
+  --Checks to see if the given expression contains the given variable,
+  --so we know when we have to replace or modify conditions
+  ExpContainsVar : String → Exp → Bool
+  ExpContainsVar var (readVar str) = primStringEquality var str
+  ExpContainsVar var (plus e1 e2) = boolOr (ExpContainsVar var e1) (ExpContainsVar var e2)
+  ExpContainsVar var (minus e1 e2) = boolOr (ExpContainsVar var e1) (ExpContainsVar var e2)
+  ExpContainsVar var (times e n) = ExpContainsVar var e
+  ExpContainsVar var e = false --We don't allow heap operations, so excluding those nothing else could contain the variable

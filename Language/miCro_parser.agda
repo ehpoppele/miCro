@@ -9,16 +9,16 @@
 -- Token type is a list of strings with all whitespace removed, separated on special characters
 -- So "while" should be one list entry, with the proceeding "(" being it's own, and so on.
 
-module Interpreter.miCro_parser where
+module Language.miCro_parser where
 
-  open import Interpreter.miCro
+  open import Language.miCro
 
   -- Builtins and Primitives --
   open import Agda.Builtin.Bool
 
   postulate Char : Set
   {-# BUILTIN CHAR Char #-}
-  
+
   data List {a} (A : Set a) : Set a where
     []  : List A
     _∷_ : (x : A) (xs : List A) → List A
@@ -30,7 +30,7 @@ module Interpreter.miCro_parser where
   _++_ : ∀ {A : Set} → List A → List A → List A
   []       ++ ys  =  ys
   (x ∷ xs) ++ ys  =  x ∷ (xs ++ ys)
-  
+
   primitive
     primStringToList : String → List Char
     primIsDigit : Char → Bool
@@ -95,8 +95,8 @@ module Interpreter.miCro_parser where
 
   -- Converts string to a nat, using arithmetic from miCro file
   strNatHelper : Nat → List Char → Nat
-  strNatHelper n [] = n 
-  strNatHelper n (m ∷ chars) = (strNatHelper ((n * 10) + ((primCharToNat m) - 48)) chars) 
+  strNatHelper n [] = n
+  strNatHelper n (m ∷ chars) = (strNatHelper ((n * 10) + ((primCharToNat m) - 48)) chars)
 
   -- Please don't call this on non-numbers
   stringToNat : String → Nat
@@ -253,7 +253,7 @@ module Interpreter.miCro_parser where
   parseRestOfIfElse : Cnd → Stmt → Tokens → (OptionE (Pair Tokens Stmt))
   parseRestOfWrite : Exp → Tokens → (OptionE (Pair Tokens Stmt))
 
-  -- Main Stmt parser; this continually creates a sequence of parsed stmts 
+  -- Main Stmt parser; this continually creates a sequence of parsed stmts
   parseStmt1 [t] = None "Attempted to parse a statement that ended unexpectedly"
   parseStmt1 tkns = parseStmt2 (parseSingleStmt tkns)
 
@@ -284,14 +284,14 @@ module Interpreter.miCro_parser where
   ... | None str = None str
   ... | Some (tkns' × e) = parseRestOfWrite e (eat tkns' "=")
   parseSingleStmt (name :t: "=" :t: "*" :t: tkns) with parseExp tkns --This really breaks the idea of looking only one ahead; could also be written to be part of a RestOfVar under the next line
-  ... | None str = None str 
+  ... | None str = None str
   ... | Some (tkns' × e) = Some ((eat tkns' ";") × (AssignVar (name) (readAddress e)))
   parseSingleStmt tkns with parseExp (eat (eat tkns (eatName tkns)) "=") --This will catch any other errors, as eat will return [t] if it can't eat the expeted token, leading to parseExp returning None
   ... | None str = None str
   ... | Some (tkns' × e) = Some ((eat tkns' ";") × (AssignVar (eatName tkns) e))
 
   -- Parses the rest of a multi-part statement
-  
+
   parseRestOfWhile c tkns with parseStmt1 tkns
   ... | None str = None str
   ... | Some (tkns' × s) = Some ((eat tkns' "}") × (While c s))
