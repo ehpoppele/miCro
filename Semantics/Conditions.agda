@@ -7,15 +7,9 @@ module Semantics.Conditions where
     open Eq using (_≡_; refl)
     open import Agda.Builtin.Bool
 
---- Condition Functions! ---
----This all assumes conditions are in a canonical form, without Not and with Or on the outermost level only; also Or should be x Or (y Or ...)
----Canonical Form also assumes all comparisons have one side with a single variable (and mult by const; by 1 at minimum); not sure how this would work out...
----Also need the forms to have EVERY variable multiplied by a const (so add times 1 where needed) as this makes later work easier
+    --Most functions in this file assume that the condition being used is in canonical form
 
--- Will later separate some of these (those dealing only with Cnds and not states as well) into a separate file
--- That file will hopefully include a canonicalization for conditions
-
-    --This function does things
+    --Returns whether or not a given condition is always true, regardless of the possible values of any variables included
     AlwaysTrue : Cnd → Bool
     AlwaysTrue (cndBool true) = true
     AlwaysTrue (cndBool false) = false
@@ -76,3 +70,46 @@ module Semantics.Conditions where
     ... | true = (ReplaceInExp n var e1 (times e2 n)) != (ReplaceInExp n var e1 (times e3 n))
     ... | false = (e2 != e3)
     ReplaceInCnd n var e otherCnd = cndBool false --Need to finish this?
+
+    --Returns an "opposite" Cnd; the result of applying a Not to the given condition
+    FlipCnd : Cnd → Cnd
+    FlipCnd (Not c) = c
+    FlipCnd (cndBool true) = (cndBool false)
+    FlipCnd (cndBool false) = (cndBool true)
+    FlipCnd (c1 And c2) = (FlipCnd c1) Or (FlipCnd c2)
+    FlipCnd (c1 Or c2) = (FlipCnd c1) And (FlipCnd c2)
+    FlipCnd (e1 < e2) = (e1 > e2) Or (e1 == e2)
+    FlipCnd (e1 <= e2) = (e1 > e2)
+    FlipCnd (e1 > e2) = (e1 < e2) Or (e1 == e2)
+    FlipCnd (e1 >= e2) = (e1 < e2)
+    FlipCnd (e1 == e2) = (e1 != e2)
+    FlipCnd (e1 != e2) = (e1 == e2)
+    
+
+    --Removes any NOTs appearing in the cnd, while changing the Cnd so that it is still equivalent
+    ApplyNots : Cnd → Cnd
+    ApplyNots (c1 And c2) = (ApplyNots c1) And (ApplyNots c2)
+    ApplyNots (c1 Or c2) = (ApplyNots c1) Or (ApplyNots c2)
+    ApplyNots (Not c) = FlipCnd (ApplyNots c)
+    ApplyNots c = c
+
+    --Split any <=/>= comparisons into an Or between == and </>
+    CndSplitComparisons : Cnd → Cnd
+    CndSplitComparisons (e1 <= e2) = (e1 < e2) Or (e1 == e2)
+    CndSplitComparisons (e1 >= e2) = (e1 > e2) Or (e1 == e2)
+    CndSplitComparisons c = c
+
+    --Takes a Cnd and makes sure all the Ands are at a lower level than all the Ors
+    --So that Ands only join atomic Cnds or other Ands (assuming Nots are gone by now)
+    CndFilterAnds : Cnd → Cnd
+    CndFilterAnds (c1 Or c2) = (CndFilterAnds c1) Or (CndFilterAnds c2)
+    CndFilterAnds (() And ()) = 
+    
+
+    --Canonicalization function, taking a condition to it's canonical form
+    --This preserves a tree of ORs at the top level, joining lists of ANDs
+    --With all Nots being applied and removed. Similarly, <= and >= are broken into ORs between the two comparisons
+    --This first "applies" the nots and removes them, then splits the <=/>= comparisons, then "filters down" the ANDs,
+    --and then finally it ensures all Cnds joined by ands are in a list (rather than tree) form
+   -- CFCnd : Cnd → Cnd
+   -- CFCnd c = CndFilterAnds (CndSplitComparisons (ApplyNots c))

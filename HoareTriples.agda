@@ -113,7 +113,7 @@ module HoareTriples where
 
   --Helper function for when the condition could be Never or Sometimes
   SymbolicCheck2 : SymbolicEnv → Cnd → HoldsWhen
-  SymbolicCheck2 env c with SEnvSatisfiesCnd env (Not c) --This is when we will Canonical Forms for Cnds; could also only finish the FlipCnd function for this part
+  SymbolicCheck2 env c with SEnvSatisfiesCnd env (FlipCnd c) --Need this in canonical form
   ... | true = Never
   ... | false = Sometimes
 
