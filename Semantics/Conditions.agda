@@ -71,6 +71,43 @@ module Semantics.Conditions where
     ... | false = (e2 != e3)
     ReplaceInCnd n var e otherCnd = cndBool false --Need to finish this?
 
+    CndFixExp : Cnd → Cnd
+    CndFixExp (c1 Or c2) = (CndFixExp c1) Or (CndFixExp c2)
+    CndFixExp (c1 And c2) = (CndFixExp c1) And (CndFixExp c2)
+    CndFixExp (Not c) = Not (CndFixExp c)
+    CndFixExp (cndBool b) = (cndBool b)
+    CndFixExp (e1 == e2) with (CFComparison e1 e2)
+    ... | Same (e1' × e2') = e1' == e2'
+    ... | Flipped (e1' × e2') = e1' == e2'
+    CndFixExp (e1 < e2) with (CFComparison e1 e2)
+    ... | Same (e1' × e2') = e1' < e2'
+    ... | Flipped (e1' × e2') = e1' > e2'
+    CndFixExp (e1 <= e2) with (CFComparison e1 e2)
+    ... | Same (e1' × e2') = e1' <= e2'
+    ... | Flipped (e1' × e2') = e1' >= e2'
+    CndFixExp (e1 > e2) with (CFComparison e1 e2)
+    ... | Same (e1' × e2') = e1' > e2'
+    ... | Flipped (e1' × e2') = e1' < e2'
+    CndFixExp (e1 >= e2) with (CFComparison e1 e2)
+    ... | Same (e1' × e2') = e1' >= e2'
+    ... | Flipped (e1' × e2') = e1' <= e2'
+    CndFixExp (e1 != e2) with (CFComparison e1 e2)
+    ... | Same (e1' × e2') = e1' != e2'
+    ... | Flipped (e1' × e2') = e1' != e2'
+
+    --Reduces all Const-Only comparisons in a Cnd to Bools
+    CCToBool : Cnd → Cnd
+    CCToBool (c1 Or c2) = ((CCToBool c1) Or (CCToBool c2))
+    CCToBool (c1 And c2) = ((CCToBool c1) And (CCToBool c2))
+    CCToBool (Not c1) = Not (CCToBool c1)
+    CCToBool ((const n) == (const m)) = (cndBool (AlwaysTrue ((const n) == (const m))))
+    CCToBool ((const n) < (const m)) = (cndBool (AlwaysTrue ((const n) < (const m))))
+    CCToBool ((const n) <= (const m)) = (cndBool (AlwaysTrue ((const n) <= (const m))))
+    CCToBool ((const n) > (const m)) = (cndBool (AlwaysTrue ((const n) > (const m))))
+    CCToBool ((const n) >= (const m)) = (cndBool (AlwaysTrue ((const n) >= (const m))))
+    CCToBool ((const n) != (const m)) = (cndBool (AlwaysTrue ((const n) != (const m))))
+    CCToBool c = c
+
     --Returns an "opposite" Cnd; the result of applying a Not to the given condition
     FlipCnd : Cnd → Cnd
     FlipCnd (Not c) = c
@@ -99,17 +136,68 @@ module Semantics.Conditions where
     CndSplitComparisons (e1 >= e2) = (e1 > e2) Or (e1 == e2)
     CndSplitComparisons c = c
 
+    FilterAndsHelper : Cnd → Cnd → Cnd
+    CndFilterAnds : Cnd → Cnd
+
+    --Gets passed two conditions; does filtering work on the second and then joins the first to that in a manner depending on the result
+    --Based on its use in the main filtering function, the first Cnd should always be an And
+    FilterAndsHelper (c1 And c2) c3 with CndFilterAnds c3
+    ... | (c3' And c4') = ((c1 And c2) And (c3' And c4'))
+    ... | (c3' Or c4') = (CndFilterAnds ((c1 And c2) And c3')) Or (CndFilterAnds ((c1 And c2) And c4'))
+    ... | c3' = (c1 And c2) And c3'
+    FilterAndsHelper c1 c2 = c1 And c2 --Should never get here
+    
+
     --Takes a Cnd and makes sure all the Ands are at a lower level than all the Ors
     --So that Ands only join atomic Cnds or other Ands (assuming Nots are gone by now)
-    CndFilterAnds : Cnd → Cnd
     CndFilterAnds (c1 Or c2) = (CndFilterAnds c1) Or (CndFilterAnds c2)
-    CndFilterAnds (() And ()) = 
+    CndFilterAnds ((c1 Or c2) And c3) = (CndFilterAnds (c1 And c3)) Or (CndFilterAnds (c2 And c3))
+    CndFilterAnds (c1 And (c2 Or c3)) = (CndFilterAnds (c1 And c2)) Or (CndFilterAnds (c1 And c3))
+    CndFilterAnds ((c1 And c2) And c3) with CndFilterAnds (c1 And c2)
+    ... | (c1' And c2') = FilterAndsHelper (c1' And c2') c3 --We will only get an And back if both c's are comparisons or ands between comparisons
+    ... | (c1' Or c2') = CndFilterAnds ((c1' Or c2') And c3)
+    ... | c = c
+    CndFilterAnds (c1 And (c2 And c3)) with CndFilterAnds (c2 And c3)
+    ... | (c2' And c3') = FilterAndsHelper (c2' And c3') c1
+    ... | (c2' Or c3') = CndFilterAnds (c1 And (c2' Or c3'))
+    ... | c = c
+    CndFilterAnds (comp1 And comp2) = (comp1 And comp2)
+    CndFilterAnds comparison = comparison --Nots should be gone, so these will be unchanged
+
+    --Helper Linearization function; takes the first argument as the chain so far and the second as rest that must be added
+    CFCLinearize : Cnd → Cnd → Cnd
+    CFCLinearize c ((c1 And c2) And c3) = CFCLinearize c (c1 And (c2 And c3))
+    CFCLinearize c (c1 And c2) = CFCLinearize (c1 And c) c2 --We can assume c1 here is atomic
+    CFCLinearize c c1 = c1 And c
+    
+
+    --Main linearize function for conditions; skips over Ors and makes calls to the working Lin function when necessary
+    --Will convert all the Ands to a strict linear form (atomic And (atomic And ...)) instead of tree form (... And ...) And (.. And ...)
+    CFCLinMain : Cnd → Cnd
+    CFCLinMain (c1 Or c2) = (CFCLinMain c1) Or (CFCLinMain c2)
+    CFCLinMain (c1 And c2) = CFCLinearize (cndBool true) (c1 And c2) --we give a True to start off the and chain, which can be removed later
+    CFCLinMain c = c
+
+    --Applies and simplifies all cndBools, so that true And c goes to c, false and c goes to false, etc
+    ApplyBools : Cnd → Cnd
+    ApplyBools ((cndBool true) Or c) = cndBool true
+    ApplyBools (c Or (cndBool true)) = cndBool true
+    ApplyBools ((cndBool false) Or c) = c
+    ApplyBools (c Or (cndBool false)) = c
+    ApplyBools ((cndBool true) And c) = c
+    ApplyBools (c And (cndBool true)) = c
+    ApplyBools ((cndBool false) And c) = cndBool false
+    ApplyBools (c And (cndBool false)) = cndBool false
+    ApplyBools (c1 Or c2) = (ApplyBools c1) Or (ApplyBools c2)
+    ApplyBools (c1 And c2) = (ApplyBools c1) And (ApplyBools c2)
+    ApplyBools c = c
     
 
     --Canonicalization function, taking a condition to it's canonical form
     --This preserves a tree of ORs at the top level, joining lists of ANDs
     --With all Nots being applied and removed. Similarly, <= and >= are broken into ORs between the two comparisons
-    --This first "applies" the nots and removes them, then splits the <=/>= comparisons, then "filters down" the ANDs,
-    --and then finally it ensures all Cnds joined by ands are in a list (rather than tree) form
-   -- CFCnd : Cnd → Cnd
-   -- CFCnd c = CndFilterAnds (CndSplitComparisons (ApplyNots c))
+    --This first "applies" the nots and removes them, then rewrites comparisons, then reduces const-only comps to bools, then splits the <=/>= comparisons,
+    --then "filters down" the Ands, and then finally it ensures all Cnds joined by ands are in a list (rather than tree) form
+    --Another step to remove/reduce boolCnds?
+    CFCnd : Cnd → Cnd
+    CFCnd c = ApplyBools (CFCLinMain (CndFilterAnds (CndSplitComparisons (ApplyNots (CCToBool (CndFixExp c))))))

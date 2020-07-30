@@ -194,3 +194,40 @@ module Semantics.Expressions where
   ExpContainsVar var (minus e1 e2) = boolOr (ExpContainsVar var e1) (ExpContainsVar var e2)
   ExpContainsVar var (times e n) = ExpContainsVar var e
   ExpContainsVar var e = false --We don't allow heap operations, so excluding those nothing else could contain the variable
+
+  --Flag data type to help the Comparison function below pass back information
+  data Orientation {a} (A : Set a) : Set a where
+    Same : A → Orientation A
+    Flipped : A → Orientation A
+
+  ToggleOrientation : ∀ {A : Set} →  Orientation A → Orientation A
+  ToggleOrientation (Same x) = Flipped x
+  ToggleOrientation (Flipped x) = Same x
+  
+
+  --Takes two expressions which appear on either side of a comparison and returns them as a pair
+  --Where the first exp is now a single var or const zero
+  --The chosen var is the first one to appear in the left expression
+  --Sometimes the comparison must be flipped for the Canonical form to be reached, so the Orientation type does this (eg 3 < x needs to be in the form x > 3)
+  {-# TERMINATING #-} --This should terminate, but I think agda doesn't recognize that CFExp only returns certain forms
+  CFCompHelper : Exp → Exp → Orientation (Pair Exp Exp)
+  CFCompHelper (const n) (const m) = Same (const n × const m)
+  CFCompHelper (const n) (plus e1 e2) = Flipped (e1 × (CFExp (minus e2 (const n)))) --Exps are in CForm, so e1 must be a readVar  
+  CFCompHelper (const n) (minus e1 (plus e2 e3)) = Same (e2 × (CFExp (minus e1 (plus (const n) e3))))
+  CFCompHelper (const n) (minus e1 (times (readVar var) m)) = Same ((times (readVar var) m) × (CFExp (minus e1 (const n))))
+  CFCompHelper (const n) (minus e1 e2) = ToggleOrientation (CFCompHelper (minus e1 e2) (const n))
+  CFCompHelper (const n) (times (readVar var) m) = Flipped ((times (readVar var) m) × (const n))
+  CFCompHelper (times (readVar var) n) e = Same ((times (readVar var) n) × e)
+  CFCompHelper (plus (times (readVar var) n) e2) e3 = Same ((times (readVar var) n) × (CFExp (minus e3 e2)))
+  CFCompHelper (minus (times (readVar var) n) e2) e3 = Same ((times (readVar var) n) × (CFExp (plus e3 e2)))
+  CFCompHelper (minus (plus (times (readVar var) n) e2) e3) e4 = Same ((times (readVar var) n) × (CFExp (minus (plus e4 e3) e2)))
+  CFCompHelper (minus (const n) (plus e2 e3)) e4 = ToggleOrientation (CFCompHelper (CFExp (plus e4 (plus e2 e3))) (const n)) --CFExp on these plus terms will give back more plus between atomics, so it should terminate despite what agda claims
+  CFCompHelper e1 e2 = Same (e1 × e2) --Shouldn't be reaching here since we're dealing with only canonical forms
+
+  --Main function just cancels out similar terms from each side before passing to the helper term
+  CFComparison : Exp → Exp → Orientation (Pair Exp Exp)
+  CFComparison e1 e2 with CFExp (minus e1 e2)
+  ... | (minus e1' e2') = CFCompHelper e1' e2'
+  ... | e = CFCompHelper e (const zero)
+  
+  
