@@ -24,7 +24,9 @@ module Semantics.Conditions where
     ... | false = true
     AlwaysTrue (e1 < e2) = ExpLessThan e1 e2
     AlwaysTrue (e1 > e2) = ExpLessThan e2 e1
-    AlwaysTrue other = false --Other comparisons currently not allowed, so get outta here
+    AlwaysTrue (e1 >= e2) = boolOr (ExpLessThan e2 e1) (ExpEquality e1 e2)
+    AlwaysTrue (e1 <= e2) = boolOr (ExpLessThan e1 e2) (ExpEquality e1 e2)
+    --AlwaysTrue other = false --Other comparisons currently not allowed, so get outta here
 
     --Checks to see if the condition contains the given variable
     --NOTE: currently this assumes the condition is a comparison; it will not break down and/or/etc.
@@ -71,6 +73,8 @@ module Semantics.Conditions where
     ... | false = (e2 != e3)
     ReplaceInCnd n var e otherCnd = cndBool false --Need to finish this?
 
+    --Rewrites comparisons so that expressions are in canonical form
+    --And also so there is a single positive var on the left hand side (when possible)
     CndFixExp : Cnd → Cnd
     CndFixExp (c1 Or c2) = (CndFixExp c1) Or (CndFixExp c2)
     CndFixExp (c1 And c2) = (CndFixExp c1) And (CndFixExp c2)
@@ -132,6 +136,8 @@ module Semantics.Conditions where
 
     --Split any <=/>= comparisons into an Or between == and </>
     CndSplitComparisons : Cnd → Cnd
+    CndSplitComparisons (c1 Or c2) = (CndSplitComparisons c1) Or (CndSplitComparisons c2)
+    CndSplitComparisons (c1 And c2) = (CndSplitComparisons c1) And (CndSplitComparisons c2)
     CndSplitComparisons (e1 <= e2) = (e1 < e2) Or (e1 == e2)
     CndSplitComparisons (e1 >= e2) = (e1 > e2) Or (e1 == e2)
     CndSplitComparisons c = c
@@ -182,14 +188,20 @@ module Semantics.Conditions where
     ApplyBools : Cnd → Cnd
     ApplyBools ((cndBool true) Or c) = cndBool true
     ApplyBools (c Or (cndBool true)) = cndBool true
-    ApplyBools ((cndBool false) Or c) = c
-    ApplyBools (c Or (cndBool false)) = c
-    ApplyBools ((cndBool true) And c) = c
-    ApplyBools (c And (cndBool true)) = c
+    ApplyBools ((cndBool false) Or c) = ApplyBools c
+    ApplyBools (c Or (cndBool false)) = ApplyBools c
+    ApplyBools ((cndBool true) And c) = ApplyBools c
+    ApplyBools (c And (cndBool true)) = ApplyBools c
     ApplyBools ((cndBool false) And c) = cndBool false
     ApplyBools (c And (cndBool false)) = cndBool false
-    ApplyBools (c1 Or c2) = (ApplyBools c1) Or (ApplyBools c2)
-    ApplyBools (c1 And c2) = (ApplyBools c1) And (ApplyBools c2)
+    ApplyBools (c1 Or c2) with ((ApplyBools c1) Or (ApplyBools c2))
+    ... | ((cndBool b) Or c2') = ApplyBools ((cndBool b) Or c2')
+    ... | (c1' Or (cndBool b)) = ApplyBools (c1' Or (cndBool b))
+    ... | c = c
+    ApplyBools (c1 And c2) with ((ApplyBools c1) And (ApplyBools c2))
+    ... | ((cndBool b) And c2') = ApplyBools ((cndBool b) And c2')
+    ... | (c1' And (cndBool b)) = ApplyBools (c1' And (cndBool b))
+    ... | c = c
     ApplyBools c = c
     
 
@@ -198,6 +210,6 @@ module Semantics.Conditions where
     --With all Nots being applied and removed. Similarly, <= and >= are broken into ORs between the two comparisons
     --This first "applies" the nots and removes them, then rewrites comparisons, then reduces const-only comps to bools, then splits the <=/>= comparisons,
     --then "filters down" the Ands, and then finally it ensures all Cnds joined by ands are in a list (rather than tree) form
-    --Another step to remove/reduce boolCnds?
+    --And then Another step to remove/reduce boolCnds
     CFCnd : Cnd → Cnd
     CFCnd c = ApplyBools (CFCLinMain (CndFilterAnds (CndSplitComparisons (ApplyNots (CCToBool (CndFixExp c))))))

@@ -212,7 +212,7 @@ module Semantics.Expressions where
   {-# TERMINATING #-} --This should terminate, but I think agda doesn't recognize that CFExp only returns certain forms
   CFCompHelper : Exp → Exp → Orientation (Pair Exp Exp)
   CFCompHelper (const n) (const m) = Same (const n × const m)
-  CFCompHelper (const n) (plus e1 e2) = Flipped (e1 × (CFExp (minus e2 (const n)))) --Exps are in CForm, so e1 must be a readVar  
+  CFCompHelper (const n) (plus e1 e2) = Flipped (e1 × (CFExp (minus (const n) e2))) --Exps are in CForm, so e1 must be a readVar  
   CFCompHelper (const n) (minus e1 (plus e2 e3)) = Same (e2 × (CFExp (minus e1 (plus (const n) e3))))
   CFCompHelper (const n) (minus e1 (times (readVar var) m)) = Same ((times (readVar var) m) × (CFExp (minus e1 (const n))))
   CFCompHelper (const n) (minus e1 e2) = ToggleOrientation (CFCompHelper (minus e1 e2) (const n))
