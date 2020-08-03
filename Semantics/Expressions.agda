@@ -39,7 +39,7 @@ module Semantics.Expressions where
   CFELinearize (e1 × e2) (times (times e3 m) n) = CFELinearize (e1 × e2) (times e3 (m * n))
   CFELinearize (e1 × e2) (plus e3 e4) = CFELinearize (CFELinearize (e1 × e2) e4) e3
   CFELinearize (e1 × e2) (minus e3 e4) = let (e1' × e2') = CFELinearize (e2 × e1) e4 in CFELinearize (e2' × e1') e3 --flip then flip back to get the stuff from e4 (being subtracted) on the opposite side
-  CFELinearize (e1 × e2) e3 = (e1 × e2) --shouldn't reach this point
+  --CFELinearize (e1 × e2) e3 = (e1 × e2) --shouldn't reach this point
 
   --Another helper that turns the exp from a tree into a more linear structure;
   --Makes sure that all plus/minus is between a const/times of Var first, and then more plus/minus like a list
@@ -151,6 +151,7 @@ module Semantics.Expressions where
   ExpLessThan (minus e1 e2) (minus e3 e4) = boolOr (boolOr (boolAnd (ExpLessThan e1 e3) (ExpLessThan e4 e2)) (boolAnd (ExpLessThan e1 e3) (ExpEquality e4 e2))) (boolAnd (ExpEquality e1 e3) (ExpLessThan e4 e2))
   ExpLessThan (plus e1 e2) (plus e3 e4) = boolOr (boolOr (boolAnd (ExpLessThan e1 e3) (ExpLessThan e2 e4)) (boolAnd (ExpLessThan e1 e3) (ExpEquality e2 e4))) (boolAnd (ExpEquality e1 e3) (ExpLessThan e2 e4))
   ExpLessThan (times e1 n) (times e2 m) = boolOr (boolOr (boolAnd (ExpLessThan e1 e2) (NatLess n m)) (boolAnd (ExpLessThan e1 e2) (NatEquality n m))) (boolAnd (ExpEquality e1 e2) (NatLess n m))
+  ExpLessThan (const n) (plus e1 e2) = ExpLessThan (const n) e2
   ExpLessThan (const n) (const m) = NatLess n m
   ExpLessThan e1 e2 = false
 
@@ -178,9 +179,9 @@ module Semantics.Expressions where
 
   --Renames all instances of str in the exp with str with nat appended
   RenameInExp : Nat → Exp → String → Exp
-  RenameInExp n1 (times (readVar str) n2) var with primStringEquality str var
-  ... | false = (times (readVar str) n2)
-  ... | true = (times (readVar (primStringAppend str (primShowNat n1))) n2)
+  RenameInExp n1 (readVar str) var with primStringEquality str var
+  ... | false = (readVar str)
+  ... | true = (readVar (primStringAppend str (primShowNat n1)))
   RenameInExp n (plus e1 e2) var = plus (RenameInExp n e1 var) (RenameInExp n e2 var)
   RenameInExp n (minus e1 e2) var = minus (RenameInExp n e1 var) (RenameInExp n e2 var)
   RenameInExp n (times e1 n2) var = times (RenameInExp n e1 var) n2

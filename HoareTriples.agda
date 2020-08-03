@@ -135,16 +135,14 @@ module HoareTriples where
   LVarRename n (e1 !=S e2) str = ((RenameInExp n e1 str) !=S (RenameInExp n e2 str))
   LVarRename n e str = e
 
-
-
   --Adds to the current env and then renames all old variables if a variable is reassigned
   --these are the "Lvars"; if X is used in env and then is reassigned, it will be "x" + "[nat]"
   SymbolicUpdate : Nat → SymbolicEnv → String → Exp → SymbolicEnv
   SymbolicUpdate n falseS str e = falseS
-  SymbolicUpdate n trueS str e = ((times (readVar str) 1) ==S e)
-  SymbolicUpdate n (env1 orS env2) str e = ((SymbolicUpdate n env1 str e) orS (SymbolicUpdate n env2 str e))
-  SymbolicUpdate n (env1 andS env2) str e = ((LVarRename n env1 str) andS (SymbolicUpdate n env2 str e)) --We are going to append the exp to the last Env in the and, so we only need to do renaming for the first of the two
-  SymbolicUpdate n comp str e = (LVarRename n comp str) andS ((times (readVar str) 1) ==S e)
+  SymbolicUpdate n trueS str e = ((times (readVar str) 1) ==S (RenameInExp n e str))
+  SymbolicUpdate n (env1 orS env2) str e = ((SymbolicUpdate n env1 str (RenameInExp n e str)) orS (SymbolicUpdate n env2 str (RenameInExp n e str)))
+  SymbolicUpdate n (env1 andS env2) str e = ((LVarRename n env1 str) andS (SymbolicUpdate n env2 str (RenameInExp n e str))) --We are going to append the exp to the last Env in the and, so we only need to do renaming for the first of the two
+  SymbolicUpdate n comp str e = (LVarRename n comp str) andS ((times (readVar str) 1) ==S (RenameInExp n e str))
 
   -- Functions similar to exec, but different rules on changing the Env; also while is not allowed at present (is skipped over)
   -- the Nat used is an LVar counter, increased with each new instruction
@@ -154,7 +152,11 @@ module HoareTriples where
   ...                         | Always = SymbolicExec n env s1
   ...                         | Never = SymbolicExec n env s2
   ...                         | Sometimes = (SymbolicExec n env s1) orS (SymbolicExec n env s2) --This might break the form of the Env? I think treed (instead of listed) orS are okay, but I'll check...
-  SymbolicExec n env (While c s) = env --skipping while for now
+  SymbolicExec n env (While zero c s) = env
+  SymbolicExec n env (While (suc n2) c s)  with (SymbolicCheck env c)
+  ... | Never = env
+  ... | Always = SymbolicExec n env (Seq s (While n2 c s))
+  ... | Sometimes = (env) orS (SymbolicExec n env (Seq s (While n2 c s)))
   SymbolicExec n env (AssignVar str e) = (SymbolicUpdate n env str e)
   SymbolicExec n env other = env --Heaps ops currently not allowed
 
@@ -163,6 +165,6 @@ module HoareTriples where
 --Assumes c1 and c2 are in canonical form (canonicalization function not yet written)
   data HoareTriple : Cnd → Stmt → Cnd → Set where
     HTSymbolicEnvProof : ∀ {c1 c2 : Cnd} {s : Stmt}
-      → (ConditionHolds (SymbolicExec zero (StatesSatisfying c1) s) c2)
+      → (ConditionHolds (SymbolicExec 1 (StatesSatisfying (CFCnd c1)) s) (CFCnd c2)) --The 1 is the default for lvar counter
       ---------------------------
       → HoareTriple c1 s c2

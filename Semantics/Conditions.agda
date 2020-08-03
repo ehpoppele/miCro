@@ -19,13 +19,13 @@ module Semantics.Conditions where
     ... | true = false
     ... | false = true
     AlwaysTrue (e1 == e2) = ExpEquality (CFExp e1) (CFExp e2)
-    AlwaysTrue (e1 != e2) with ExpEquality e1 e2
+    AlwaysTrue (e1 != e2) with ExpEquality (CFExp e1) (CFExp e2)
     ... | true = false
     ... | false = true
-    AlwaysTrue (e1 < e2) = ExpLessThan e1 e2
-    AlwaysTrue (e1 > e2) = ExpLessThan e2 e1
-    AlwaysTrue (e1 >= e2) = boolOr (ExpLessThan e2 e1) (ExpEquality e1 e2)
-    AlwaysTrue (e1 <= e2) = boolOr (ExpLessThan e1 e2) (ExpEquality e1 e2)
+    AlwaysTrue (e1 < e2) = ExpLessThan (CFExp e1) (CFExp e2)
+    AlwaysTrue (e1 > e2) = ExpLessThan (CFExp e2) (CFExp e1)
+    AlwaysTrue (e1 >= e2) = boolOr (ExpLessThan (CFExp e2) (CFExp e1)) (ExpEquality (CFExp e1) (CFExp e2))
+    AlwaysTrue (e1 <= e2) = boolOr (ExpLessThan (CFExp e1) (CFExp e2)) (ExpEquality (CFExp e1) (CFExp e2))
     --AlwaysTrue other = false --Other comparisons currently not allowed, so get outta here
 
     --Checks to see if the condition contains the given variable
@@ -60,16 +60,16 @@ module Semantics.Conditions where
     --- !!!!! Need to fix this; change so that instead of times its a "canonical times" that pushes the times down to the "lowest level" (closest to the variables/consts)
     ReplaceInCnd : Nat → String → Exp → Cnd → Cnd
     ReplaceInCnd n var e1 (e2 == e3) with boolOr (ExpContainsVar var e2) (ExpContainsVar var e3)
-    ... | true = (ReplaceInExp n var e1 (times e2 n)) == (ReplaceInExp n var e1 (times e3 n))
+    ... | true = (ReplaceInExp n var e1 (CTimes e2 n)) == (ReplaceInExp n var e1 (CTimes e3 n))
     ... | false = (e2 == e3)
     ReplaceInCnd n var e1 (e2 < e3) with boolOr (ExpContainsVar var e2) (ExpContainsVar var e3)
-    ... | true = (ReplaceInExp n var e1 (times e2 n)) < (ReplaceInExp n var e1 (times e3 n))
+    ... | true = (ReplaceInExp n var e1 (CTimes e2 n)) < (ReplaceInExp n var e1 (CTimes e3 n))
     ... | false = (e2 < e3)
     ReplaceInCnd n var e1 (e2 > e3) with boolOr (ExpContainsVar var e2) (ExpContainsVar var e3)
-    ... | true = (ReplaceInExp n var e1 (times e2 n)) > (ReplaceInExp n var e1 (times e3 n))
+    ... | true = (ReplaceInExp n var e1 (CTimes e2 n)) > (ReplaceInExp n var e1 (CTimes e3 n))
     ... | false = (e2 > e3)
     ReplaceInCnd n var e1 (e2 != e3) with boolOr (ExpContainsVar var e2) (ExpContainsVar var e3)
-    ... | true = (ReplaceInExp n var e1 (times e2 n)) != (ReplaceInExp n var e1 (times e3 n))
+    ... | true = (ReplaceInExp n var e1 (CTimes e2 n)) != (ReplaceInExp n var e1 (CTimes e3 n))
     ... | false = (e2 != e3)
     ReplaceInCnd n var e otherCnd = cndBool false --Need to finish this?
 

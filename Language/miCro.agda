@@ -114,10 +114,10 @@ module Language.miCro where
   infixr 5 _&_
 
   -- Helper function to return value from a given heap address --
-  readHeap : Heap → Nat → Nat
-  readHeap [h] x = zero
-  readHeap (n :H: h) zero = n
-  readHeap (n :H: h) (suc x) = readHeap h x
+  readHeapHelper : Heap → Nat → Nat
+  readHeapHelper [h] x = zero
+  readHeapHelper (n :H: h) zero = n
+  readHeapHelper (n :H: h) (suc x) = readHeapHelper h x
 
   -- Helper function to return the total spaces in the heap
   heapSize : Heap → Nat
@@ -127,9 +127,6 @@ module Language.miCro where
   -- Expressions, for Assigning Variables --
   data Exp : Set where
     readVar : String → Exp
-    readVar++ : String → Exp --can remove
-    derefVar : String → Exp --
-    readAddress : Exp → Exp --
     plus : Exp → Exp → Exp
     const : Nat → Exp
     minus : Exp → Exp → Exp
@@ -152,11 +149,11 @@ module Language.miCro where
   data Stmt : Set where
     Seq : Stmt → Stmt → Stmt
     IfElse : Cnd → Stmt → Stmt → Stmt
-    While : Cnd → Stmt → Stmt
+    While : Nat → Cnd → Stmt → Stmt
     AssignVar : String → Exp → Stmt
-    -- add read heap as stmt rather than exp
+    ReadHeap : String → Exp → Stmt --writes the value at heap address Exp into the given var
     WriteHeap : Exp → Exp → Stmt --First exp is address, second is value (could also be nat → exp...?)
-    AssignPtr : String → Exp → Stmt -- change to new -- Adds the value to the end of the current heap and makes a ptr var to it
+    New : String → Exp → Stmt -- Adds the value to the end of the current heap and makes a ptr var to it
     No-op : Stmt
 
   --- --- Evaluation functions, including eval (applied to programs) and it's helper functions --- ---
@@ -168,15 +165,6 @@ module Language.miCro where
   eval (((Var str2 x) :e: v) & h) (readVar str1) with primStringEquality str1 str2
   ...                                             | true = x
   ...                                             | false = eval (v & h) (readVar str1)
-  eval ([e] & h) (readVar++ str) = 1 --I don't know if this makes any sense; perhaps still return zero since var can't be found?
-  eval (((Var str2 x) :e: v) & h) (readVar++ str1) with primStringEquality str1 str2
-  ...                                             | true = suc x
-  ...                                             | false = eval (v & h) (readVar++ str1)
-  eval ([e] & h) (derefVar str) = zero
-  eval (((Var str1 x) :e: v) & h) (derefVar str2) with primStringEquality str1 str2
-  ...                                             | true = (readHeap h x)
-  ...                                             | false = eval (v & h) (derefVar str2)
-  eval (env & h) (readAddress e) = (readHeap h (eval (env & h) e))
   eval r (const n) = n
   eval r (plus e1 e2) = (eval r e1) + (eval r e2)
   eval r (minus e1 e2) = (eval r e1) - (eval r e2)
@@ -238,18 +226,20 @@ module Language.miCro where
 
 
   -- Evaluation function, taking value of variable and code for input, producing value of variable at the end --
-  {-# TERMINATING #-} --Not actually guaranteed to terminate, because of while; need to be careful writing programs or it will basically freeze my computer
+  {-# TERMINATING #-} --Doesn't read as terminating with the counter now as part of the while loop
   exec : RAM → Stmt → RAM
   exec r (Seq s1 s2) = exec (exec r s1) s2
   exec r (IfElse c s1 s2) with (check r c)
   ...                         | true = exec r s1
   ...                         | false = exec r s2
-  exec r (While c s) with (check r c)
+  exec r (While (suc n) c s) with (check r c)
   ... | false = r
-  ... | true = exec r (Seq s (While c s))
+  ... | true = exec r (Seq s (While n c s))
+  exec r (While zero c s) = r
   exec (v & h) (AssignVar str e) = (update v str (eval (v & h) e)) & h
   exec (v & h) (WriteHeap e1 e2) = v & (write h (eval (v & h) e1) (eval (v & h) e2))
-  exec (v & h) (AssignPtr str e) = (update v str (heapSize h)) & (addToHeap h (eval (v & h) e))
+  exec (v & h) (ReadHeap str e) = (update v str (readHeapHelper h (eval (v & h) e))) & h
+  exec (v & h) (New str e) = (update v str (heapSize h)) & (addToHeap h (eval (v & h) e))
   exec r No-op = r
 
   --- --- Test Programs --- ---
@@ -257,17 +247,19 @@ module Language.miCro where
   -- form is exec (code) (init x) ≡ expected outcome --
   -- Everything is nicely reflexive; intrinsic proofs I guess based on the typing? --
 
+  {- readVar ++ is deprecated
   test1 : ∀ ( n : Nat ) → exec  (((Var "X" n) :e: [e]) & [h]) (Seq (AssignVar "X" (const 1)) (AssignVar "X" (readVar++ "X"))) ≡ ((Var "X" 2) :e: [e]) & [h]
   test1 n = refl
+  -}
 
   test2 : exec ([e] & [h]) (IfElse ((readVar "X") == (const 0)) (AssignVar "X" (plus (readVar "X") (const 1))) No-op) ≡ ((Var "X" 1) :e: [e]) & [h]
   test2 = refl
 
-  test3 : exec ([e] & [h]) (While ((readVar "X") == (const 0)) (AssignVar "X" (plus (readVar "X") (const 1)))) ≡ ((Var "X" 1) :e: [e]) & [h]
+  test3 : exec ([e] & [h]) (While 10 ((readVar "X") == (const 0)) (AssignVar "X" (plus (readVar "X") (const 1)))) ≡ ((Var "X" 1) :e: [e]) & [h]
   test3 = refl
 
 
-  whileTest : exec ([e] & [h]) (While ((readVar "X") < (const 10)) (AssignVar "X" (plus (const 1) (readVar "X")))) ≡ ((Var "X" 10) :e: [e]) & [h]
+  whileTest : exec ([e] & [h]) (While 10 ((readVar "X") < (const 10)) (AssignVar "X" (plus (const 1) (readVar "X")))) ≡ ((Var "X" 10) :e: [e]) & [h]
   whileTest = refl
 
   {- removed since now multiplication is only by const
@@ -278,10 +270,12 @@ module Language.miCro where
 
   -- Test with multiple Variables, based on Hoare Logic pdf from UW --
 
+  {-This worked before; needs to be adjusted now that readVar ++ is no longer a thing
   UWEx1 : exec ([e] & [h]) (While ((readVar "k") <= (const 4)) (Seq (AssignVar "sum" (plus (readVar "k") (readVar "sum"))) (AssignVar "k" (readVar++ "k")))) ≡ ((Var "sum" 10) :e: (Var "k" 5) :e: [e]) & [h]
   UWEx1 = refl
+  -}
 
   -- Heap Test: Basic read/write from heap; currently not working
-  heapTest1 : exec ([e] & [h]) (Seq (AssignPtr "x" (const 10)) (AssignVar "y" (derefVar "x"))) ≡ ((Var "x" 0) :e: (Var "y" 10) :e: [e]) & (10 :H: [h])
+  heapTest1 : exec ([e] & [h]) (Seq (New "x" (const 10)) (ReadHeap "y" (readVar "x"))) ≡ ((Var "x" 0) :e: (Var "y" 10) :e: [e]) & (10 :H: [h])
   heapTest1 = refl
 -- To Add: Rules on equivalence of Env; if Env A contains Env B, then A ≡ B? or some similar relation, so that rhs of above statement/proofs can be condensed to only 1 variable --

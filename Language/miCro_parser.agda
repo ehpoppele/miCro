@@ -121,7 +121,8 @@ module Language.miCro_parser where
   -- Parsing functions, directly interacting with the stream and parsing it. Split into condition, expression, and statement
 
   -- Parse functions for Conditions and Expressions, which are handled separately --
-  {-# TERMINATING #-}
+  
+  --Expression parsing functions
   parseExp : Tokens → (OptionE (Pair Tokens Exp))
   parseSum : Tokens → (OptionE (Pair Tokens Exp))
   parseMult : Tokens → (OptionE (Pair Tokens Exp))
@@ -174,7 +175,7 @@ module Language.miCro_parser where
   ... | false = None "Attempted multiplication by something other than a const valued number"
   parseNum [t] = None "Attempted to multiply with empty tokens"
 
-  {-# TERMINATING #-} --Note: Will need to add ability to process literal booleans (t/f) later, unless not needed
+  -- Conditions parsing functions
   parseCnd : Tokens → OptionE (Pair Tokens Cnd)
   parseDisj : Tokens → OptionE (Pair Tokens Cnd)
   parseConj : Tokens → OptionE (Pair Tokens Cnd)
@@ -279,13 +280,13 @@ module Language.miCro_parser where
   ... | Some (tkns' × c) = parseRestOfIf c (eat (eat tkns' ")") "{")
   parseSingleStmt ("new " :t: tkns) with parseExp (eat (eat tkns (eatName tkns)) "=") -- A little cheaty since this sort of looks two tokens ahead
   ... | None str = None str
-  ... | Some (tkns' × e) = Some ((eat tkns' ";") × (AssignPtr (eatName tkns) e))
+  ... | Some (tkns' × e) = Some ((eat tkns' ";") × (New (eatName tkns) e))
   parseSingleStmt ("*" :t: tkns) with parseExp tkns
   ... | None str = None str
   ... | Some (tkns' × e) = parseRestOfWrite e (eat tkns' "=")
   parseSingleStmt (name :t: "=" :t: "*" :t: tkns) with parseExp tkns --This really breaks the idea of looking only one ahead; could also be written to be part of a RestOfVar under the next line
   ... | None str = None str
-  ... | Some (tkns' × e) = Some ((eat tkns' ";") × (AssignVar (name) (readAddress e)))
+  ... | Some (tkns' × e) = Some ((eat tkns' ";") × (ReadHeap (name) e))
   parseSingleStmt tkns with parseExp (eat (eat tkns (eatName tkns)) "=") --This will catch any other errors, as eat will return [t] if it can't eat the expeted token, leading to parseExp returning None
   ... | None str = None str
   ... | Some (tkns' × e) = Some ((eat tkns' ";") × (AssignVar (eatName tkns) e))
@@ -294,7 +295,7 @@ module Language.miCro_parser where
 
   parseRestOfWhile c tkns with parseStmt1 tkns
   ... | None str = None str
-  ... | Some (tkns' × s) = Some ((eat tkns' "}") × (While c s))
+  ... | Some (tkns' × s) = Some ((eat tkns' "}") × (While 512 c s))
 
   parseRestOfIf c tkns with parseStmt1 tkns
   ... | None str = None str
@@ -318,4 +319,4 @@ module Language.miCro_parser where
 
   -- Main function; parses and then runs the program with empty intial RAM
   run : Tokens → RAM
-  run tkns = exec ([e] & [h]) (parseTokens tkns)
+  run tkns = exec ([e] & [h]) (parseTokens tkns) --default loop count at 512

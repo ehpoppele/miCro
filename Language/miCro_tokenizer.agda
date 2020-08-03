@@ -64,6 +64,9 @@ module Language.miCro_tokenizer where
   tokenize : String → Tokens
   tokenize str = token_helper (primStringToList str) []
 
+  parseString : String → Stmt
+  parseString str = parseTokens (tokenize str)
+
   str1 = "{ x =5 }; "
 
   tokenizerTest1 : (tokenize str1) ≡ ("{" :t: "x" :t: "=" :t: "5" :t: "}" :t: ";" :t: [t])
