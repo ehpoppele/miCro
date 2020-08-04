@@ -151,7 +151,7 @@ module HoareTriples where
   SymbolicExec n env (IfElse c s1 s2) with (SymbolicCheck env c)
   ...                         | Always = SymbolicExec n env s1
   ...                         | Never = SymbolicExec n env s2
-  ...                         | Sometimes = (SymbolicExec n env s1) orS (SymbolicExec n env s2) --This might break the form of the Env? I think treed (instead of listed) orS are okay, but I'll check...
+  ...                         | Sometimes = (SymbolicExec n env s1) orS (SymbolicExec n env s2) --Join cnd to respective env
   SymbolicExec n env (While zero c s) = env
   SymbolicExec n env (While (suc n2) c s)  with (SymbolicCheck env c)
   ... | Never = env

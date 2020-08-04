@@ -30,7 +30,6 @@ module HoareTripleExamples where
     PreFalseHelper (AssignVar str e) n = refl
     PreFalseHelper (IfElse c s1 s2) n rewrite (PreFalseHelper s2 n) = refl
     PreFalseHelper (Seq s1 s2) n rewrite (PreFalseHelper s1 n) rewrite (PreFalseHelper s2 (suc n)) = refl
-    --These ones will need to be update once while/heap ops are added/changed
     PreFalseHelper (While zero c s) n = refl
     PreFalseHelper (While (suc n2) c s) n = refl
     PreFalseHelper (ReadHeap var e) n = refl
@@ -102,5 +101,11 @@ module HoareTripleExamples where
 
     IncXY : [ cndBool true ] (parseString "x = y + 1;") [ readVar "x" > readVar "y" ]
     IncXY = HTSymbolicEnvProof (ConditionHoldsProof refl)
+
+    AbsurdTest2 : StatesSatisfying (CFCnd ( ((readVar "x") < (const 5)) And ((readVar "x") > (const 5)))) ≡ falseS
+    AbsurdTest2 = {!!}
+
+    AbsurdTest : [ ((readVar "x") < (const 5)) And ((readVar "x") > (const 5))  ] (No-op) [ (cndBool false) ]
+    AbsurdTest = HTSymbolicEnvProof (ConditionHoldsProof {!!})
 
     

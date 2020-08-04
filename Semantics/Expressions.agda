@@ -152,7 +152,7 @@ module Semantics.Expressions where
   ExpLessThan (minus e1 e2) (times e3 m) = ExpLessThan e1 (times e3 m)
   ExpLessThan (minus e1 e2) (const m) = ExpLessThan e1 (const m)
   ExpLessThan (minus e1 e2) (minus e3 e4) = boolOr (boolOr (boolAnd (ExpLessThan e1 e3) (ExpLessThan e4 e2)) (boolAnd (ExpLessThan e1 e3) (ExpEquality e4 e2))) (boolAnd (ExpEquality e1 e3) (ExpLessThan e4 e2))
-  ExpLessThan (plus e1 e2) (plus e3 e4) = boolOr (boolOr (boolAnd (ExpLessThan e1 e3) (ExpLessThan e2 e4)) (boolAnd (ExpLessThan e1 e3) (ExpEquality e2 e4))) (boolAnd (ExpEquality e1 e3) (ExpLessThan e2 e4))
+  ExpLessThan (plus e1 e2) (plus e3 e4) = boolOr (boolOr (boolOr (boolAnd (ExpLessThan e1 e3) (ExpLessThan e2 e4)) (boolAnd (ExpLessThan e1 e3) (ExpEquality e2 e4))) (boolAnd (ExpEquality e1 e3) (ExpLessThan e2 e4))) (ExpLessThan (plus e1 e2) e4)
   ExpLessThan (times e1 n) (times e2 m) = (boolAnd (ExpEquality e1 e2) (NatLess n m))
   ExpLessThan (times e1 n) (plus e3 e4) = boolOr (boolOr (ExpLessThan (times e1 n) e3) (ExpLessThan (times e1 n) e4)) (boolAnd (ExpEquality (times e1 n) e3) (ExpLessThan (const zero) (e4)))
   ExpLessThan (const n) (plus e1 e2) = ExpLessThan (const n) e2 --e1 won't be a const so we can skip that comparison
