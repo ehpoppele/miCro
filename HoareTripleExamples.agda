@@ -91,4 +91,16 @@ module HoareTripleExamples where
     IncXBasic : HoareTriple (cndBool true) (parseString "x = x + 1;") (readVar "x" > const 0)
     IncXBasic = HTSymbolicEnvProof (ConditionHoldsProof refl)
 
+    BasicTest4 : SymbolicExec 1 trueS (parseString "x = y + 1;") ≡ ((times (readVar "x") 1) ==S (plus (readVar "y") (const 1)))
+    BasicTest4 = refl
+
+    BasicTest5 : ModifyCnd (((times (readVar "x") 1) ==S (plus (readVar "y") (const 1)))) (readVar "x" > readVar "y") ≡ (plus (readVar "y") (const 1)) > times (readVar "y") 1
+    BasicTest5 = refl
+
+    BasicTest6 : ExpLessThan (times (readVar "y") 1) (plus (times (readVar "y") 1) (const 1)) ≡ true
+    BasicTest6 = refl
+
+    IncXY : [ cndBool true ] (parseString "x = y + 1;") [ readVar "x" > readVar "y" ]
+    IncXY = HTSymbolicEnvProof (ConditionHoldsProof refl)
+
     

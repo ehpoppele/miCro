@@ -168,3 +168,6 @@ module HoareTriples where
       → (ConditionHolds (SymbolicExec 1 (StatesSatisfying (CFCnd c1)) s) (CFCnd c2)) --The 1 is the default for lvar counter
       ---------------------------
       → HoareTriple c1 s c2
+
+  syntax HoareTriple c1 s c2 = [ c1 ] s [ c2 ] --Curly brackets reserved for something else, so we use square instead
+  
