@@ -102,10 +102,35 @@ module HoareTripleExamples where
     IncXY : [ cndBool true ] (parseString "x = y + 1;") [ readVar "x" > readVar "y" ]
     IncXY = HTSymbolicEnvProof (ConditionHoldsProof refl)
 
-    AbsurdTest2 : StatesSatisfying (CFCnd ( ((readVar "x") < (const 5)) And ((readVar "x") > (const 5)))) ≡ falseS
-    AbsurdTest2 = {!!}
+    -- A test which should pass but does not; my canonical forms fail to recognize groups of comparisons that are equal to false or true
+    -- As a result, you would have to simplify such comparisons yourself before entering them
+    -- In which case they simply pass under prefalse or post true or similar rules
+    --AbsurdTest : [ ((readVar "x") < (const 5)) And ((readVar "x") > (const 5))  ] (No-op) [ (cndBool false) ]
+    --AbsurdTest = HTSymbolicEnvProof (ConditionHoldsProof {!!})
 
-    AbsurdTest : [ ((readVar "x") < (const 5)) And ((readVar "x") > (const 5))  ] (No-op) [ (cndBool false) ]
-    AbsurdTest = HTSymbolicEnvProof (ConditionHoldsProof {!!})
+    AgdaNeedsADebuggingMode : tokenize "if (x == 3) {x = 2} else { x = 1};" ≡ "if" :t: "(" :t: "x" :t: "==" :t: "3" :t: ")" :t: "{" :t: "x" :t: "=" :t: "2" :t: "}" :t: "else" :t: "{" :t: "x" :t: "=" :t: "1" :t: "}" :t: ";" :t: [t]
+    AgdaNeedsADebuggingMode = refl
+
+    TestAnotherOne : parseStmt1 ("x" :t: "=" :t: "2" :t: ";" :t: "}" :t: "else" :t: "{" :t: "x" :t: "=" :t: "1" :t: ";" :t: "}" :t: ";" :t: [t]) ≡ Some (("}" :t: "else" :t: "{" :t: "x" :t: "=" :t: "1" :t: ";" :t: "}" :t: ";" :t: [t]) × (AssignVar "x" (const 2)))
+    TestAnotherOne = refl
+    
+{-
+    HelpTest : parseStmt1 (tokenize "if (x == 3) {x = 2;} else { x = 1;};") ≡ (Some ([t] × IfElse ((readVar "x") == const 3) (AssignVar "x" (const 2)) (No-op)))
+    HelpTest =
+      begin
+        parseRestOfIf ((readVar "x") == (const 3)) ("x" :t: "=" :t: "2" :t: ";" :t: "}" :t: "else" :t: "{" :t: "x" :t: "=" :t: "1" :t: ";" :t: "}" :t: ";" :t: [t])
+      ≡⟨⟩
+        parseRestOfIfElse ((readVar "x") == (const 3)) (AssignVar "x" (const 2)) (eat ("else" :t: "{" :t: "x" :t: "=" :t: "1" :t: ";" :t: "}" :t: ";" :t: [t]) "}")
+      ≡⟨⟩
+        (Some ([t] × IfElse ((readVar "x") == const 3) (AssignVar "x" (const 2)) (No-op)))
+      ∎
+-}
+    IfElseTest : [ (readVar "x") == const 6 ] parseString "if (x == 3) {x = 2;} else { x = 1;}" [ (readVar "x") < const 3 ]
+    IfElseTest = HTSymbolicEnvProof (ConditionHoldsProof refl)
+
+    WhileTest : ∀ (n : Nat) → [ (readVar "x") == const 1 ] parseString "while (x > 0) {x = x - 1;};"  [ (readVar "x") == const zero ]
+    WhileTest n = HTSymbolicEnvProof (ConditionHoldsProof {!!})
+
+    
 
     

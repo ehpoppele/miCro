@@ -260,9 +260,9 @@ module Language.miCro_parser where
 
   -- Helper function for Stmt1; if these combined I would have to write out parseSingleStmt tkns about five times (since I can't use "with" in a "let ... in"), which would mean five times slower parsing
   parseStmt2 (None str) = None str
-  parseStmt2 (Some (tkns × s)) with stopper tkns
-  ... | true = (Some ([t] × s))
-  ... | false = parseStmt3 (Some (tkns × s)) -- Now we want "(Some ([t] × (Seq s (parseStmt1 t))))", but we must first check that parseStmt1 gives a Some return
+  parseStmt2 (Some (("}" :t: tkns) × s)) = (Some (("}" :t: tkns) × s))
+  parseStmt2 (Some ([t] × s)) =  (Some ([t] × s))
+  parseStmt2 (Some (tkns × s)) =  parseStmt3 (Some (tkns × s)) -- Now we want "(Some ([t] × (Seq s (parseStmt1 t))))", but we must first check that parseStmt1 gives a Some return
 
   -- Another helper, since we need to make a Seq in second case above, but need to know we got back some Stmt and not a None option
   parseStmt3 (None str) = None str

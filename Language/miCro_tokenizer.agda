@@ -79,3 +79,6 @@ module Language.miCro_tokenizer where
 
   tokenizerTest2 : (tokenize str2) ≡ ("INIT" :t: "(" :t: "x" :t: "=" :t: "5" :t: "," :t: "y" :t: "=" :t: "0" :t: ")" :t: ";" :t: "while" :t: "(" :t: "y" :t: "<=" :t: "x" :t: ")" :t: "{" :t: "y" :t: "=" :t: "y" :t: "+" :t: "x" :t: ";" :t: "}" :t: ";" :t: [t])
   tokenizerTest2 = refl
+  
+  tokenizerTest3 : (tokenize "} else {") ≡ "}" :t: "else" :t: "{" :t: [t]
+  tokenizerTest3 = refl

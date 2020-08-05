@@ -89,12 +89,12 @@ module Semantics.Conditions where
     CndFixExp (e1 <= e2) with (CFComparison e1 e2)
     ... | Same (e1' × e2') = e1' <= e2'
     ... | Flipped (e1' × e2') = e1' >= e2'
-    CndFixExp (e1 > e2) with (CFComparison e1 e2)
-    ... | Same (e1' × e2') = e1' > e2'
-    ... | Flipped (e1' × e2') = e1' < e2'
-    CndFixExp (e1 >= e2) with (CFComparison e1 e2)
-    ... | Same (e1' × e2') = e1' >= e2'
-    ... | Flipped (e1' × e2') = e1' <= e2'
+    CndFixExp (e1 > e2) with (CFComparison e2 e1)
+    ... | Same (e1' × e2') = e1' < e2'
+    ... | Flipped (e1' × e2') = e1' > e2'
+    CndFixExp (e1 >= e2) with (CFComparison e2 e1)
+    ... | Same (e1' × e2') = e1' <= e2'
+    ... | Flipped (e1' × e2') = e1' >= e2'
     CndFixExp (e1 != e2) with (CFComparison e1 e2)
     ... | Same (e1' × e2') = e1' != e2'
     ... | Flipped (e1' × e2') = e1' != e2'
@@ -110,6 +110,7 @@ module Semantics.Conditions where
     CCToBool ((const n) > (const m)) = (cndBool (AlwaysTrue ((const n) > (const m))))
     CCToBool ((const n) >= (const m)) = (cndBool (AlwaysTrue ((const n) >= (const m))))
     CCToBool ((const n) != (const m)) = (cndBool (AlwaysTrue ((const n) != (const m))))
+    CCToBool (e < (const zero)) = cndBool false --This rule needs to be somewhere in the canonicalization process, so I put it here
     CCToBool c = c
 
     --Returns an "opposite" Cnd; the result of applying a Not to the given condition
@@ -134,7 +135,35 @@ module Semantics.Conditions where
     ApplyNots (Not c) = FlipCnd (ApplyNots c)
     ApplyNots c = c
 
+    {- Incomplete functions that would reduce groups of comparisons to bools when possible
+    -- These would reduce comparisons joined by And to false if they were inconsistent with each other
+    -- And those joined by Or to true when they combined to allow all possible values for a variable (eg x < 4 Or x == 5 Or x > 6)
+    -- Not used because of the difficulty on And on two equalities; if we have x == e1 And x == e2 we need to check if the equation 0 = e1 - e2
+    -- Has any possible solutions; I believe such a solver is outside the scope of this project.
+
+    --Iterates over each comparison in c2 and combines it with c1 when possible
+    --Assumes c1 is a comparison and returns the modified version of c1 and c2
+    CndCombineAndHelper : Cnd → (Pair Cnd Cnd)
+    CndCombineAndHelper 
+
+    --Combines the comparisons in an And chain; removes redundant comparisons and replaces incompatible ones with False
+    CndCombineAnd : Cnd → Cnd
+    CndCombineAnd (c1 And c2) = let c2' = (CndCombineAnd c2) in let (c1'' × c2'') = (CndCombineAndHelper c1 c2') in (c1'' And c2'')
+    CndCombineAnd (Not c) = Not (CndCombineAnd c)
+    CndCombineAnd (c1 Or c2) = (CndCombineAnd c1) Or (CndCombineAnd c2)
+    CndCombineAnd c = c
+
+    --Combines comparisons before they are split so that which are Always or Never True can be found
+    --We can assume the nots are gone by now, I hope
+    CndCombineComparisons : Cnd → Cnd
+    CndCombineComparisons (Not c) = Not (CndCombineComparisons) --still writing it out since we need to have a not rule for the function to be complete
+    CndCombineComparisons (c1 And c2) = CndCombineAnd (c1 And c2)
+    CndCombineComparisons (c1 Or c2)
+    ... | 
+    -}
+
     --Split any <=/>= comparisons into an Or between == and </>
+    --Honestly I don't know why I'm still doing this, since my decision to remove all =</>= from CForms doesn't really have a good basis in anything
     CndSplitComparisons : Cnd → Cnd
     CndSplitComparisons (c1 Or c2) = (CndSplitComparisons c1) Or (CndSplitComparisons c2)
     CndSplitComparisons (c1 And c2) = (CndSplitComparisons c1) And (CndSplitComparisons c2)
@@ -208,8 +237,14 @@ module Semantics.Conditions where
     --Canonicalization function, taking a condition to it's canonical form
     --This preserves a tree of ORs at the top level, joining lists of ANDs
     --With all Nots being applied and removed. Similarly, <= and >= are broken into ORs between the two comparisons
-    --This first "applies" the nots and removes them, then rewrites comparisons, then reduces const-only comps to bools, then splits the <=/>= comparisons,
-    --then "filters down" the Ands, and then finally it ensures all Cnds joined by ands are in a list (rather than tree) form
+    --This first fixes comparisons so they are written in a canonical form, then writes all the const-only comparisons as booleans, then applies the Nots,
+    --then it splits all the comparisons that haven't been reduced to bools since it's too late to change my canonical form
+    --Not allowing <= even though I realize that doesn't make much sense, after that the function will
+    --then "filter down" the Ands, and then finally it ensures all Cnds joined by ands are in a list (rather than tree) form
+    --Then we have to combine comparisons and reduce any variable comparisons to bools
+    --But this breaks the canonical form, so we have to redo a lot of the work
+    --which is why there's a helper function to apply those three steps together
     --And then Another step to remove/reduce boolCnds
+
     CFCnd : Cnd → Cnd
     CFCnd c = ApplyBools (CFCLinMain (CndFilterAnds (CndSplitComparisons (ApplyNots (CCToBool (CndFixExp c))))))
