@@ -1,3 +1,10 @@
+--This file contains functions for canonicalizing expressions and comparison functions to work with expressions in canonical form
+--The canonical form is a minus between two chains of plus statements. Within each chain, variables always have a times around them,
+--even if it's a times 1. The order is alphabetical on variable name with constants at the end. If all elements are positive, then
+--there will be no minus
+--I believe this canonical form is complete and functional as it ought to be if the whole project were working; it is not missing any steps
+--and two equivalent expressions will always canonicalize to the same form.
+
 module Semantics.Expressions where
 
   open import Language.miCro
@@ -6,6 +13,8 @@ module Semantics.Expressions where
 
   ---String Functions, included here since so far only expressions use these
   ---These functions help with alphabetical ordering of expressions that include variables
+
+  --Helper function to alphabetically compare two lists of characters
   CharListCompare : List Char → List Char → Order
   CharListCompare [] [] = Equal
   CharListCompare [] (c ∷ chars) = Less
@@ -15,6 +24,9 @@ module Semantics.Expressions where
   ... | Greater = Greater
   ... | Equal = CharListCompare chars1 chars2
 
+  --Alphabetically compares the two strings, using the order type established in the miCro.agda file
+  --Less means the first string comes first alphabetically
+  --On reflection this has really wacky--but at least consisten--behavior when it comes to capitalization or non-letter characters
   StringAlphaCompare : String → String → Order
   StringAlphaCompare str1 str2 = CharListCompare (primStringToList str1) (primStringToList str2)
 
@@ -39,9 +51,8 @@ module Semantics.Expressions where
   CFELinearize (e1 × e2) (times (times e3 m) n) = CFELinearize (e1 × e2) (times e3 (m * n))
   CFELinearize (e1 × e2) (plus e3 e4) = CFELinearize (CFELinearize (e1 × e2) e4) e3
   CFELinearize (e1 × e2) (minus e3 e4) = let (e1' × e2') = CFELinearize (e2 × e1) e4 in CFELinearize (e2' × e1') e3 --flip then flip back to get the stuff from e4 (being subtracted) on the opposite side
-  --CFELinearize (e1 × e2) e3 = (e1 × e2) --shouldn't reach this point
 
-  --Another helper that turns the exp from a tree into a more linear structure;
+  --Another function that turns the exp from a tree into a more linear structure;
   --Makes sure that all plus/minus is between a const/times of Var first, and then more plus/minus like a list
   --Removes all instances of (plus (plus e1 e2) e3) etc
   CFELinMain : Exp → Exp
@@ -64,6 +75,7 @@ module Semantics.Expressions where
   CFECombineTerms e1 e2 = (e1 × e2) --should never reach here, but just need to catch all cases and errors
 
   --Currently only functional when used at this appropriate point in the canonicalization process; will not work on an expression of any form
+  --Main function that invokes the combineTerms above
   CFECombineMain : Exp → Exp
   CFECombineMain (plus e1 e2) with CFECombineTerms e1 e2
   ... | (e1' × const zero) = e1'
@@ -73,6 +85,10 @@ module Semantics.Expressions where
   CFECombineMain e = const 0 --again this should never be reached
 
 
+  --Helper function that takes one base exp and one expression chain
+  --The chain is assumed to be on the minus side, and since all terms are combined
+  --We're really only looking for any pair of like terms that were split over the minus to then
+  --combine/cancel these terms as appropriate
   CFECancelHelper : Exp → Exp → (Pair Exp Exp)
   CFECancelHelper (times (readVar str1) n) (plus (times (readVar str2) m) e2) with primStringEquality str1 str2
   ... | true = boolIfElse (NatLess n m) ((const zero) × (plus (times (readVar str1) (m - n)) e2)) ((times (readVar str1) (n - m)) × (e2))
@@ -92,6 +108,7 @@ module Semantics.Expressions where
   CFECancelHelper e1 e2 = (e1 × e2)
 
   --Addition helper, that "pushes addition through minus"
+  --Used in function below; applies plus while maintaining the canonical form thus far
   CPlus : Exp → Exp → Exp
   CPlus e1 (minus e2 e3) = (minus (plus e1 e2) e3)
   CPlus e1 e2 = (plus e1 e2)
@@ -104,6 +121,8 @@ module Semantics.Expressions where
   ... | (e1' × e2') = CPlus e1' (CFECancelMain (minus e2 e2')) --Using a helper function here to add e1' below the minus after the rest of the work is done
   CFECancelMain e = e --Shouldn't ever get a non-minus structure to work with at present
 
+  --Orders expressions based on the alphabetic order of the variables they contain;
+  --Here we assume we are dealing only with consts and times of readvars
   ExpAlphaCompare : Exp → Exp → Order
   ExpAlphaCompare (times (readVar str1) n) (times (readVar str2) m) = StringAlphaCompare str1 str2
   ExpAlphaCompare (times (readVar str) n) e2 = Less
@@ -111,7 +130,7 @@ module Semantics.Expressions where
   ExpAlphaCompare (const n) e2 = Less
   ExpAlphaCompare e1 e2 = Equal
 
-  --Takes a "least so far" expression and plus-list of exps, returns the least element and the rest of the plus-list
+  --Takes a "least so far" expression and plus-list of exps, returns the least (alphabetically first) element and the rest of the plus-list
   CFEAlphaHelper : Exp → Exp → (Pair Exp Exp)
   CFEAlphaHelper e1 (plus e2 e3) with ExpAlphaCompare e1 e2
   ... | Greater = let (e1' × e2') = (CFEAlphaHelper e2 e3) in (e1' × (plus e1 e2'))
@@ -120,6 +139,7 @@ module Semantics.Expressions where
   ... | Greater = (e2 × e1)
   ... | other = (e1 × e2)
 
+  --Main function to alphabetically order the elements/variables in an exp
   CFEAlphabetize : Exp → Exp
   CFEAlphabetize (minus e1 e2) = (minus (CFEAlphabetize e1) (CFEAlphabetize e2))
   CFEAlphabetize (plus e1 e2) = let (e1' × e2') = (CFEAlphaHelper e1 e2) in (plus e1' (CFEAlphabetize e2'))
@@ -133,7 +153,6 @@ module Semantics.Expressions where
   ... | exp = (const zero) --CFELinMain can't return anything other than a minus structure (at least currently)
 
   --- Extra expression functions, not part of the canonicalization process, but rely on their arguments being in that form to function
-  -- Might later change these to a CFE Equality and a general equality that first applies the C Form itself?
 
   --This will test if a two given expressions are always equal;
   --Assumes proper canonical form is used, so the two expressions should be identical in structure and content
@@ -145,7 +164,8 @@ module Semantics.Expressions where
   ExpEquality (const n) (const m) = NatEquality n m
   ExpEquality e1 e2 = false --Any other structure indicates an error in canonical form
 
-  --Less than gets messy due to cases
+  --Checks if one expression is always less than another, regardless of the value of any variables
+  --gets messy due to cases and the unpleasant way I ended up writing boolOr as (boolOr _ _) instead of (_ boolOr _)
   {-# TERMINATING #-} --Terminates due to the structure of the exps after canonicalization; may not terminate on all inputs
   ExpLessThan : Exp → Exp → Bool
   ExpLessThan (minus e1 e2) (plus e3 e4) = ExpLessThan e1 (plus e3 e4)
@@ -182,6 +202,7 @@ module Semantics.Expressions where
   ReplaceInExp n var e1 e2 = e2 --All that remains are illegal heap ops, deprecated readVar++, and const
 
   --Renames all instances of str in the exp with str with nat appended
+  --Used to rename "lvars" in the symbolic execution process
   RenameInExp : Nat → Exp → String → Exp
   RenameInExp n1 (readVar str) var with primStringEquality str var
   ... | false = (readVar str)
@@ -214,7 +235,9 @@ module Semantics.Expressions where
   --Where the first exp is now a single var or const zero
   --The chosen var is the first one to appear in the left expression
   --Sometimes the comparison must be flipped for the Canonical form to be reached, so the Orientation type does this (eg 3 < x needs to be in the form x > 3)
-  {-# TERMINATING #-} --This should terminate, but I think agda doesn't recognize that CFExp only returns certain forms
+  --This may need to be revised for the Cnd CForm to work properly; it would be good to have comparisons always pointing one way, but
+  --I opted instead to always have a variable on the LHS (barring const-only comparisons, which are reduced to booleans)
+  {-# TERMINATING #-} --This should terminate, but I agda doesn't recognize that CFExp only returns certain forms (and even if it did this function says it works for all Exps, which is not true)
   CFCompHelper : Exp → Exp → Orientation (Pair Exp Exp)
   CFCompHelper (const n) (const m) = Same (const n × const m)
   CFCompHelper (const n) (plus e1 e2) = Flipped (e1 × (CFExp (minus (const n) e2))) --Exps are in CForm, so e1 must be a readVar  
@@ -229,6 +252,7 @@ module Semantics.Expressions where
   CFCompHelper (minus (const n) (plus e2 e3)) e4 = ToggleOrientation (CFCompHelper (CFExp (plus e4 (plus e2 e3))) (const n)) --CFExp on these plus terms will give back more plus between atomics, so it should terminate despite what agda claims
   CFCompHelper e1 e2 = Same (e1 × e2) --Shouldn't be reaching here since we're dealing with only canonical forms
 
+  --Helps to write a comparison in a canonical form, with a single readVar on the LHS and the RHS being a CForm Exp with all the rest
   --Main function just cancels out similar terms from each side before passing to the helper term
   CFComparison : Exp → Exp → Orientation (Pair Exp Exp)
   CFComparison e1 e2 with CFExp (minus e1 e2)

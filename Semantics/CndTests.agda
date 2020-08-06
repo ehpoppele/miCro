@@ -1,3 +1,4 @@
+--Testing for canonical forms of conditions; used mostly for debugging
 module Semantics.CndTests where
 
     open import Semantics.Conditions
@@ -40,6 +41,7 @@ module Semantics.CndTests where
     --Second Condition is ((5 > 3x + y) Or (6 > 2y)) And (x > 4), should go to ? (3x < 5 - y And x > 4) Or (2y < 6 And x > 4)
     Cnd2 = ((((const 5) > (plus (times (readVar "x") 3) (readVar "y"))) Or ((const 6) > (times (readVar "y") 2))) And ((readVar "x") > (const 4)))
 
+    --Step-by-step proof of canonicalization that was used for debugging
     CndTest2 : (CFCnd Cnd2) ≡ ((((times (readVar "x") 1) > (const 4)) And ((times (readVar "x") 3) < (minus (const 5) (times (readVar "y") 1)))) Or (((times (readVar "x") 1) > (const 4)) And ((times (readVar "y") 2) < (const 6))))
     CndTest2 =
       begin

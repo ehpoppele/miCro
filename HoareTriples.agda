@@ -1,3 +1,7 @@
+--Main file for definition of a Hoare Triple, using the micro Language
+--Contains the type definition for Hoare Triples and for the symbolic environments that are used to verify them
+--Also contains all the functions used that deal with Symbolic Environments
+--Other functions used here that deal only with Cnds or Exps are in the relevant file in the Semantics folder
 module HoareTriples where
 
   open import Language.miCro
@@ -8,7 +12,8 @@ module HoareTriples where
   open Eq using (_≡_; refl)
   open import Agda.Builtin.Bool
 
-------------------------------------
+  --Symbolic Environments represent a set of possible states that the program could be in at any time
+  --It does this by joining restrictions on variables with And or Or
   data SymbolicEnv : Set where
     _<S_ : Exp → Exp → SymbolicEnv
     _<=S_ : Exp → Exp → SymbolicEnv
@@ -16,11 +21,12 @@ module HoareTriples where
     _>=S_ : Exp → Exp → SymbolicEnv
     _==S_ : Exp → Exp → SymbolicEnv
     _!=S_ : Exp → Exp → SymbolicEnv
-    trueS : SymbolicEnv
-    falseS : SymbolicEnv
+    trueS : SymbolicEnv --Represents the set of all possible states; should not be joined to anything with andS/orS
+    falseS : SymbolicEnv --Represents the set of no states; should not be joined to any other SEnv
     _andS_ : SymbolicEnv → SymbolicEnv → SymbolicEnv
     _orS_ : SymbolicEnv → SymbolicEnv → SymbolicEnv
 
+  --Combines two SEnvs with an andS, following appropriate rules for true/false and keeping orS at the top level
   CombineEnv : SymbolicEnv → SymbolicEnv → SymbolicEnv
   CombineEnv falseS e = falseS
   CombineEnv e falseS = falseS
@@ -49,6 +55,8 @@ module HoareTriples where
   -- Currently these will sometimes lose their canonical form, which may be an issue, but so far isn't
   -- I don't think this function itself relies on the form, however, so maybe can be fixed
   -- By just doing canonicalization later; before AlwaysTrue is evaluated?
+  --This also currently fails, since it will skip a restriction if it none of its variables appear in the Cnd
+  --And then will not return to that SEnv if other variables were added to the Cnd to make the first restriction relevant
   ModifyCnd : SymbolicEnv → Cnd → Cnd
   ModifyCnd s (cndBool true) = (cndBool true)
   ModifyCnd s (cndBool false) = (cndBool false)
@@ -82,7 +90,7 @@ module HoareTriples where
   ... | Left = (e2 < e3) And (ReplaceInCnd k var (plus e1 (const 1)) (e2 < e3))
   ... | Right = (e2 < e3) Or (ReplaceInCnd k var (plus e1 (const 1)) (e2 < e3))
   ... | NoSide = (e2 < e3)
-  ModifyCnd vr c = c --The Env at this point should be a comparison between a var and expression, so we shouldn't reac these cases
+  ModifyCnd vr c = c --The Env at this point should be a comparison between a var and expression, so we shouldn't reach these cases
 
 
   --Will return false if there is any state from the SymbolicEnv in which Cnd does not hold, and true otherwise
@@ -162,7 +170,9 @@ module HoareTriples where
 
 
 
---Assumes c1 and c2 are in canonical form (canonicalization function not yet written)
+  --The actual Hoare Triple type; requires a ConditionHolds object as proof
+  --For most concrete triples (all values explicit, no "∀" etc) this will often be a refl proof
+  --Works at present for most cases, but has issue with CFCnd and ModifyCnd
   data HoareTriple : Cnd → Stmt → Cnd → Set where
     HTSymbolicEnvProof : ∀ {c1 c2 : Cnd} {s : Stmt}
       → (ConditionHolds (SymbolicExec 1 (StatesSatisfying (CFCnd c1)) s) (CFCnd c2)) --The 1 is the default for lvar counter

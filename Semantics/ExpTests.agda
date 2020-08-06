@@ -1,3 +1,6 @@
+--Tests for the Expressions functions; mostly used to confirm that the canonical form is working
+--None of these are proper proofs, and were mostly used for debugging and to convince myself that these functions are working
+--Also for testing the expression comparison functions
 module Semantics.ExpTests where
 
     open import Language.miCro

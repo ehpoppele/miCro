@@ -54,10 +54,10 @@ module Language.parser_tests where
 
     -- Second set of tests, for parsing expressions and conditions
 
-    -- Tokens 2 is "5 + [4 * x]"
-    tokens2 = "5" :t: "+" :t: "[" :t: "4" :t: "*" :t: "x" :t: "]" :t: [t]
+    -- Tokens 2 is "5 + [x * 4]"
+    tokens2 = "5" :t: "+" :t: "[" :t: "x" :t: "*" :t: "4" :t: "]" :t: [t]
 
-    parseTest1 : (parseExp tokens2) ≡ Some([t] × (plus (const 5) (times (const 4) (readVar "x"))))
+    parseTest1 : (parseExp tokens2) ≡ Some([t] × (plus (const 5) (times (readVar "x") 4)))
     parseTest1 = refl
 
     -- Tokens 3 is "4 - 5 + 4"
@@ -69,7 +69,7 @@ module Language.parser_tests where
     -- Tokens 4 is "[x * 4] - 5 + [4 - y]"
     tokens4 = "[" :t: "x" :t: "*" :t: "4" :t: "]" :t: "-" :t: "5" :t: "+" :t: "[" :t: "4" :t: "-" :t: "y" :t: "]" :t: [t]
 
-    parseTest3 : (parseExp tokens4) ≡ Some([t] × (plus (minus (times (readVar "x") (const 4)) (const 5)) (minus (const 4) (readVar "y"))))
+    parseTest3 : (parseExp tokens4) ≡ Some([t] × (plus (minus (times (readVar "x") 4) (const 5)) (minus (const 4) (readVar "y"))))
     parseTest3 = refl
 
     -- parseTest4 below was having troubles with the new parser, so I wrote this series of tests to break it down and catch the various errors as I went
@@ -94,7 +94,7 @@ module Language.parser_tests where
     -- Tokens 6 is x = 1; x = x + 1;
     tokens6 = "x" :t: "=" :t: "1" :t: ";" :t: "x" :t: "=" :t: "x" :t: "+" :t: "1" :t: [t]
 
-    parseTest5 : (parseTokens tokens6) ≡ (Seq (AssignVar Natural "x" (const 1)) (AssignVar Natural "x" (plus (readVar "x") (const 1))) )
+    parseTest5 : (parseTokens tokens6) ≡ (Seq (AssignVar "x" (const 1)) (AssignVar "x" (plus (readVar "x") (const 1))) )
     parseTest5 = refl
 
     -- Tokens 7 is "(x = 2, y = 3)"
@@ -111,26 +111,26 @@ module Language.parser_tests where
     runTest = refl
     -}
 
-    -- Tokens 9 is "while (y < 9) {x = x + y; y = y + 2;};"
-    tokens9 = "while" :t: "(" :t: "y" :t: "<" :t: "9" :t: ")" :t: "{" :t: "x" :t: "=" :t: "x" :t: "+" :t: "y" :t: ";" :t: "y" :t: "=" :t: "y" :t: "+" :t: "2" :t: ";" :t: "}" :t: ";" :t: [t]
+    -- Tokens 9 is "while (y < 9) {x = x + y; y = y + 2;}"
+    tokens9 = "while" :t: "(" :t: "y" :t: "<" :t: "9" :t: ")" :t: "{" :t: "x" :t: "=" :t: "x" :t: "+" :t: "y" :t: ";" :t: "y" :t: "=" :t: "y" :t: "+" :t: "2" :t: ";" :t: "}" :t: [t]
 
-    parseTest7 : (parseTokens tokens9) ≡ While ((readVar "y") < (const 9)) (Seq (AssignVar Natural "x" (plus (readVar "x") (readVar "y"))) (AssignVar Natural "y" (plus (readVar "y") (const 2))) )
+    parseTest7 : (parseTokens tokens9) ≡ (While 512 ((readVar "y") < (const 9)) (Seq (AssignVar "x" (plus (readVar "x") (readVar "y"))) (AssignVar "y" (plus (readVar "y") (const 2))) ))
     parseTest7 = refl
 
-    -- tokens 10 is "if (x < 10) {while (x > 7) {x = x - 1;};};"
-    tokens10 = "if" :t: "(" :t: "x" :t: "<" :t: "10" :t: ")" :t: "{" :t: "while" :t: "(" :t: "x" :t: ">" :t: "7" :t: ")" :t: "{" :t: "x" :t: "=" :t: "x" :t: "-" :t: "1" :t: ";" :t: "}" :t: ";" :t: "}" :t: ";"  :t: [t]
+    -- tokens 10 is "if (x < 10) {while (x > 7) {x = x - 1;}}"
+    tokens10 = "if" :t: "(" :t: "x" :t: "<" :t: "10" :t: ")" :t: "{" :t: "while" :t: "(" :t: "x" :t: ">" :t: "7" :t: ")" :t: "{" :t: "x" :t: "=" :t: "x" :t: "-" :t: "1" :t: ";" :t: "}" :t: "}" :t: [t]
 
-    bracketsTest1 : (parseTokens tokens10) ≡ IfElse ((readVar "x") < (const 10)) (While ((readVar "x") > (const 7)) (AssignVar Natural "x" (minus (readVar "x") (const 1)))) (No-op)
+    bracketsTest1 : (parseTokens tokens10) ≡ IfElse ((readVar "x") < (const 10)) (While 512 ((readVar "x") > (const 7)) (AssignVar "x" (minus (readVar "x") (const 1)))) (No-op)
     bracketsTest1 = refl
 
     -- Tokens 11 is "y = &[1 + 2]"
     tokens11 = "y" :t: "=" :t: "&" :t: "[" :t: "1" :t: "+" :t: "2" :t: "]" :t: [t]
-
-    heapTest2 : (parseTokens tokens11) ≡ (AssignVar Natural "y" (readAddress (plus (const 1) (const 2))))
-    heapTest2 = refl
+    
+    --heapTest2 : (parseTokens tokens11) ≡ (AssignVar Natural "y" (readAddress (plus (const 1) (const 2))))
+    --heapTest2 = refl
 
     -- Tokens 12 is "&[1] = 5;"
-    tokens12 = "&" :t: "[" :t: "1" :t: "]" :t: "=" :t: "5" :t: ";" :t: [t]
+    --tokens12 = "&" :t: "[" :t: "1" :t: "]" :t: "=" :t: "5" :t: ";" :t: [t]
 
-    heapTest3 : (parseTokens tokens12) ≡ (WriteHeap (const 1) (const 5))
-    heapTest3 = refl
+    --heapTest3 : (parseTokens tokens12) ≡ (WriteHeap (const 1) (const 5))
+    --heapTest3 = refl

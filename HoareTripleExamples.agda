@@ -1,3 +1,4 @@
+--Examples, proofs, and tests of the Hoare Triple Data type
 module HoareTripleExamples where
 
     open import Language.miCro
@@ -19,6 +20,8 @@ module HoareTripleExamples where
       → f u v ≡ f x y
     cong₂ f refl refl  =  refl
     ----------
+
+--- Two proofs for the Pre-False and the Post-True triples ---
 
     PreFalseEx1 : SEnvSatisfiesCnd falseS (cndBool true) ≡ true
     PreFalseEx1 = refl
@@ -66,7 +69,8 @@ module HoareTripleExamples where
     PostTrue : ∀ (s : Stmt) (c : Cnd) → HoareTriple (c) s (cndBool true)
     PostTrue = λ s c → HTSymbolicEnvProof (ConditionHoldsProof (PostTrueHelper (SymbolicExec 1 (StatesSatisfying (CFCnd c)) s)))
 
-    -- Hoare Triple Testing with concrete examples
+--- Hoare Triple Testing with concrete examples ---
+-- I also ran across some bugs testing these, so there are other proofs included to test that certain parts were working (mostly parsing issues)
 
     AssignXBasic : HoareTriple (cndBool true) (parseString "x = 1;") ((readVar "x") == const 1)
     AssignXBasic = HTSymbolicEnvProof (ConditionHoldsProof refl)
@@ -108,28 +112,67 @@ module HoareTripleExamples where
     --AbsurdTest : [ ((readVar "x") < (const 5)) And ((readVar "x") > (const 5))  ] (No-op) [ (cndBool false) ]
     --AbsurdTest = HTSymbolicEnvProof (ConditionHoldsProof {!!})
 
+   --- Everything below here is a part of a test of a while loop triple which does not work
+   --- though most bugs were fixed there is still an issue with ModifyCnd, explained at the bottom
+
     AgdaNeedsADebuggingMode : tokenize "if (x == 3) {x = 2} else { x = 1};" ≡ "if" :t: "(" :t: "x" :t: "==" :t: "3" :t: ")" :t: "{" :t: "x" :t: "=" :t: "2" :t: "}" :t: "else" :t: "{" :t: "x" :t: "=" :t: "1" :t: "}" :t: ";" :t: [t]
     AgdaNeedsADebuggingMode = refl
 
     TestAnotherOne : parseStmt1 ("x" :t: "=" :t: "2" :t: ";" :t: "}" :t: "else" :t: "{" :t: "x" :t: "=" :t: "1" :t: ";" :t: "}" :t: ";" :t: [t]) ≡ Some (("}" :t: "else" :t: "{" :t: "x" :t: "=" :t: "1" :t: ";" :t: "}" :t: ";" :t: [t]) × (AssignVar "x" (const 2)))
     TestAnotherOne = refl
-    
-{-
-    HelpTest : parseStmt1 (tokenize "if (x == 3) {x = 2;} else { x = 1;};") ≡ (Some ([t] × IfElse ((readVar "x") == const 3) (AssignVar "x" (const 2)) (No-op)))
-    HelpTest =
-      begin
-        parseRestOfIf ((readVar "x") == (const 3)) ("x" :t: "=" :t: "2" :t: ";" :t: "}" :t: "else" :t: "{" :t: "x" :t: "=" :t: "1" :t: ";" :t: "}" :t: ";" :t: [t])
-      ≡⟨⟩
-        parseRestOfIfElse ((readVar "x") == (const 3)) (AssignVar "x" (const 2)) (eat ("else" :t: "{" :t: "x" :t: "=" :t: "1" :t: ";" :t: "}" :t: ";" :t: [t]) "}")
-      ≡⟨⟩
-        (Some ([t] × IfElse ((readVar "x") == const 3) (AssignVar "x" (const 2)) (No-op)))
-      ∎
--}
+
     IfElseTest : [ (readVar "x") == const 6 ] parseString "if (x == 3) {x = 2;} else { x = 1;}" [ (readVar "x") < const 3 ]
     IfElseTest = HTSymbolicEnvProof (ConditionHoldsProof refl)
 
-    WhileTest : ∀ (n : Nat) → [ (readVar "x") == const 1 ] parseString "while (x > 0) {x = x - 1;};"  [ (readVar "x") == const zero ]
-    WhileTest n = HTSymbolicEnvProof (ConditionHoldsProof {!!})
+    WhileParseTest : (parseStmt1 ("while" :t: "(" :t: "x" :t: ">" :t: "0" :t: ")" :t: "{" :t: "x" :t: "=" :t: "x" :t: "-" :t: "1" :t: ";" :t: "}" :t: [t])) ≡ Some ([t] × (While 512 ((readVar "x") > (const zero)) (AssignVar "x" (minus (readVar "x") (const 1)))))
+    WhileParseTest =
+      begin
+        (parseStmt1 ("while" :t: "(" :t: "x" :t: ">" :t: "0" :t: ")" :t: "{" :t: "x" :t: "=" :t: "x" :t: "-" :t: "1" :t: ";" :t: "}" :t: [t]))
+      ≡⟨⟩
+        (parseStmt2 (parseSingleStmt ("while" :t: "(" :t: "x" :t: ">" :t: "0" :t: ")" :t: "{" :t: "x" :t: "=" :t: "x" :t: "-" :t: "1" :t: ";" :t: "}"  :t: [t])))
+      ≡⟨⟩
+        parseStmt2 (parseRestOfWhile ((readVar "x") > (const 0)) ("x" :t: "=" :t: "x" :t: "-" :t: "1" :t: ";" :t: "}" :t: [t]))
+      ≡⟨⟩
+        parseStmt2 (Some ([t] × (While 512 ((readVar "x") > (const zero)) (AssignVar "x" (minus (readVar "x") (const 1))))))
+      ≡⟨⟩
+        (Some ([t] × (While 512 ((readVar "x") > (const zero)) (AssignVar "x" (minus (readVar "x") (const 1))))))
+      ∎
+
+    WhileParseTest3 : parseStmt1 ("x" :t: "=" :t: "x" :t: "-" :t: "1" :t: ";" :t: "}" :t: ";" :t: [t]) ≡  (Some (("}" :t: ";" :t: [t]) × (AssignVar "x" (minus (readVar "x") (const 1)))))
+    WhileParseTest3 =
+      begin
+        parseStmt1 ("x" :t: "=" :t: "x" :t: "-" :t: "1" :t: ";" :t: "}" :t: ";" :t: [t])
+      ≡⟨⟩
+        parseStmt2 (parseSingleStmt ("x" :t: "=" :t: "x" :t: "-" :t: "1" :t: ";" :t: "}" :t: ";" :t: [t]))
+      ≡⟨⟩
+        parseStmt2 (Some (("}" :t: ";" :t: [t]) × (AssignVar "x" (minus (readVar "x") (const 1)))))
+      ≡⟨⟩
+        parseStmt2 (Some (("}" :t: ";" :t: [t]) × (AssignVar "x" (minus (readVar "x") (const 1)))))
+      ≡⟨⟩
+       (Some (("}" :t: ";" :t: [t]) × (AssignVar "x" (minus (readVar "x") (const 1)))))
+      ∎
+        
+
+    WhileParseTest2 : (parseExp ("x" :t: "-" :t: "1" :t: ";" :t: "}" :t: ";" :t: [t])) ≡ (Some ((";" :t: "}" :t: ";" :t: [t]) × (minus (readVar "x") (const 1))))
+    WhileParseTest2 =
+      begin
+         (parseExp ("x" :t: "-" :t: "1" :t: ";" :t: "}" :t: ";" :t: [t]))
+       ≡⟨⟩
+         (Some ((";" :t: "}" :t: ";" :t: [t]) × (minus (readVar "x") (const 1))))
+       ∎
+
+    --Although this is now parsing, it still won't work
+    --I believe this is due to an error with the ModifyCnd function; if it first goes through the restriction "x1 = 1",
+    --It will discard it since it seems irrelevant. Next, it will process "x = x1 - 1", and add that, resulting in
+    -- "x1 - 1 == 0" as the final condition to check; this will fail the AlwaysTrue test.
+    -- the "simple" fix to this is to hold onto restrictions instead of discarding them when they are not added,
+    -- and then to continually iterate over the restrictions in the SEnv until none are added.
+    -- The better solution to this would be to create a state space for the variables, using restrictions to modify that space
+    -- and then checking if that state space is a subset of the space that the final conditions occupy
+    -- But that's a lot of math
+    -- So I think this is where this project ends
+    WhileTest1 : [ (readVar "x") == const 1 ] parseString "while (x > 0) {x = x - 1;};"  [ (readVar "x") == const zero ]
+    WhileTest1 = HTSymbolicEnvProof (ConditionHoldsProof {!!})
 
     
 

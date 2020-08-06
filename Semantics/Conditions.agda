@@ -1,3 +1,8 @@
+--Functions for conditions and their use in the Hoare Triples
+--Primarily the failed canonicalization function, which I believe works
+--Except for its ability to reduce set of comparisons on variables to true or false when appropriate
+--This ultimately would require some function that could solve equations and inequalities
+--Also contains some functions to find variables in conditions, and the AlwaysTrue function
 module Semantics.Conditions where
 
     open import Language.miCro
@@ -26,7 +31,6 @@ module Semantics.Conditions where
     AlwaysTrue (e1 > e2) = ExpLessThan (CFExp e2) (CFExp e1)
     AlwaysTrue (e1 >= e2) = boolOr (ExpLessThan (CFExp e2) (CFExp e1)) (ExpEquality (CFExp e1) (CFExp e2))
     AlwaysTrue (e1 <= e2) = boolOr (ExpLessThan (CFExp e1) (CFExp e2)) (ExpEquality (CFExp e1) (CFExp e2))
-    --AlwaysTrue other = false --Other comparisons currently not allowed, so get outta here
 
     --Checks to see if the condition contains the given variable
     --NOTE: currently this assumes the condition is a comparison; it will not break down and/or/etc.
@@ -39,10 +43,11 @@ module Semantics.Conditions where
     CndContainsVar var (e1 > e2) = boolOr (ExpContainsVar var e1) (ExpContainsVar var e2)
     CndContainsVar var c = false
 
+    --Used for the function below, identifying where a variable appears in a comparison, or if it is not present
     data Side : Set where
       Left : Side
       Right : Side
-      NoSide : Side
+      NoSide : Side --This should've just been "NotFound" or "NotPresent"
 
     --Extra containment function, returning Left Right or NoSide, for what part of a comp Cnd contains the var
     --Could modify some things to have this replace CndContainsVar later
@@ -57,7 +62,6 @@ module Semantics.Conditions where
 
     -- If string is a variable in Cnd, this multiplies the Cnd (assumed to be a comp)
     -- By nat, then replaces all instances of nat*var in Cnd with exp, and returns that Cnd
-    --- !!!!! Need to fix this; change so that instead of times its a "canonical times" that pushes the times down to the "lowest level" (closest to the variables/consts)
     ReplaceInCnd : Nat → String → Exp → Cnd → Cnd
     ReplaceInCnd n var e1 (e2 == e3) with boolOr (ExpContainsVar var e2) (ExpContainsVar var e3)
     ... | true = (ReplaceInExp n var e1 (CTimes e2 n)) == (ReplaceInExp n var e1 (CTimes e3 n))
@@ -75,6 +79,8 @@ module Semantics.Conditions where
 
     --Rewrites comparisons so that expressions are in canonical form
     --And also so there is a single positive var on the left hand side (when possible)
+    --Makes calls to a function in the Expressions file (CFComparison, for "Canonical Form" of a comparison)
+    --Since that function deals pretty much only with expressions, it seemed appropriate to put it there
     CndFixExp : Cnd → Cnd
     CndFixExp (c1 Or c2) = (CndFixExp c1) Or (CndFixExp c2)
     CndFixExp (c1 And c2) = (CndFixExp c1) And (CndFixExp c2)
@@ -171,6 +177,8 @@ module Semantics.Conditions where
     CndSplitComparisons (e1 >= e2) = (e1 > e2) Or (e1 == e2)
     CndSplitComparisons c = c
 
+    --Mutually recursize pair functions which "push" Ands down to the lower level so that only Or is at the top level
+    --Now I'm unsure of when the Ors get linearized? but this just sorts the two, while later functions linearize things
     FilterAndsHelper : Cnd → Cnd → Cnd
     CndFilterAnds : Cnd → Cnd
 
@@ -241,10 +249,12 @@ module Semantics.Conditions where
     --then it splits all the comparisons that haven't been reduced to bools since it's too late to change my canonical form
     --Not allowing <= even though I realize that doesn't make much sense, after that the function will
     --then "filter down" the Ands, and then finally it ensures all Cnds joined by ands are in a list (rather than tree) form
-    --Then we have to combine comparisons and reduce any variable comparisons to bools
-    --But this breaks the canonical form, so we have to redo a lot of the work
-    --which is why there's a helper function to apply those three steps together
     --And then Another step to remove/reduce boolCnds
+    --I think this is missing a step to linearize Ors; not needed for my current code but would be to ensure that all
+    --equivalent Cnds have the same CForm
+    --Of course, this is also missing the step to reduce comparison groups to bools when applicable (eg, x < 5 AND x > 6 should become false)
+    --But that requires finding whether a systems of equations has no solutions or if all values are solutions, and
+    --such an algorithm would require work beyond the scope of this project
 
     CFCnd : Cnd → Cnd
     CFCnd c = ApplyBools (CFCLinMain (CndFilterAnds (CndSplitComparisons (ApplyNots (CCToBool (CndFixExp c))))))
