@@ -1,3 +1,7 @@
+-- This file should not be loaded or run
+-- Nearly all the syntax used for heap operations that appears here is outdated
+-- Also it imports wrong
+
 open import Interpreter.miCro
 open import Interpreter.miCro_parser
 open import Interpreter.miCro_tokenizer

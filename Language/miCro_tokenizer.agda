@@ -1,5 +1,7 @@
 --- miCro Tokenizer ---
 
+-- Functions to process a string into a token data type so that it can be parsed into micro
+
 module Language.miCro_tokenizer where
 
   open import Language.miCro_parser -- For token data type; parser was written first so it appears in there
@@ -64,8 +66,11 @@ module Language.miCro_tokenizer where
   tokenize : String → Tokens
   tokenize str = token_helper (primStringToList str) []
 
+  -- Parse string is useful for Hoare triples and other cases where we do not want to immediately run the code
   parseString : String → Stmt
   parseString str = parseTokens (tokenize str)
+
+  -- A few quick tests to go with the tokenizer
 
   str1 = "{ x =5 }; "
 

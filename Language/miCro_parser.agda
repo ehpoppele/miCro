@@ -1,13 +1,10 @@
--- First: Read from file into string --
-
--- process env = initial environment read from string
--- process prog = instructions read from string
--- run exec env prog, and return (print?) output
+--- Recursive Descent Parser for micro language ---
 
 -- Tokens and related functions --
 -- At this point we assume the input file has been parsed into tokens type
 -- Token type is a list of strings with all whitespace removed, separated on special characters
 -- So "while" should be one list entry, with the proceeding "(" being it's own, and so on.
+-- Tokenize process is defined in its own file, which imports this one (kinda backwards but this file was written first)
 
 module Language.miCro_parser where
 
@@ -37,6 +34,7 @@ module Language.miCro_parser where
     primCharToNat : Char → Nat
 
   -- Token type, works as a list of strings --
+  -- Has to be it's own specific type so that empty tokens is clearly a tokens type
   data Tokens : Set where
     [t] : Tokens
     _:t:_ : String → Tokens → Tokens
@@ -62,14 +60,6 @@ module Language.miCro_parser where
       snd : B
 
   --- PARSING FUNCTIONS ---
-
-  -- Token Split : Searches for the first instance of the given string not in parentheses in the given token list
-  -- Splits the list at that point, and return either left or right half, depending on which function was called
-  -- Avoid calling this function with "(" or ")" unless you're careful about removing parens
-  stopper : Tokens → Bool
-  stopper [t] = true
-  stopper ("}" :t: tkns) = true
-  stopper tkns = false
 
   -- Removes the given string from the front of tokens. Gives back an empty token list if the string was not found at the front
   eat : Tokens → String → Tokens
@@ -117,6 +107,7 @@ module Language.miCro_parser where
   isVarName "]" = false
   isVarName str = true
   -- may need more cases to handle symbols; will figure that out
+  
 
   -- Parsing functions, directly interacting with the stream and parsing it. Split into condition, expression, and statement
 
@@ -258,7 +249,7 @@ module Language.miCro_parser where
   parseStmt1 [t] = None "Attempted to parse a statement that ended unexpectedly"
   parseStmt1 tkns = parseStmt2 (parseSingleStmt tkns)
 
-  -- Helper function for Stmt1; if these combined I would have to write out parseSingleStmt tkns about five times (since I can't use "with" in a "let ... in"), which would mean five times slower parsing
+  -- Helper function for Stmt1; checks if there is more to parse in a seq of stmts, or if we've hit the end of the program/while block/ifelse block
   parseStmt2 (None str) = None str
   parseStmt2 (Some (("}" :t: tkns) × s)) = (Some (("}" :t: tkns) × s))
   parseStmt2 (Some ([t] × s)) =  (Some ([t] × s))
@@ -310,6 +301,8 @@ module Language.miCro_parser where
   ... | None str = None str
   ... | Some (tkns' × e2) = Some ((eat tkns' ";") × (WriteHeap e e2))
 
+
+
   -- Top level parser function; calls the other parsers and converts from the option (token stmt) type to the appropriate stmt
   parseTokens : Tokens → Stmt
   parseTokens tkns with parseStmt1 tkns
@@ -320,3 +313,5 @@ module Language.miCro_parser where
   -- Main function; parses and then runs the program with empty intial RAM
   run : Tokens → RAM
   run tkns = exec ([e] & [h]) (parseTokens tkns) --default loop count at 512
+
+  --Functions to tokenize and then parse are in tokenizer file

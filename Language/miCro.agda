@@ -27,7 +27,7 @@ module Language.miCro where
   boolIfElse true a b = a
   boolIfElse false a b = b
 
-  -- Orders, Used for compare function --
+  -- Orders, Used for compare functions on Nats (and in other files on strings) --
   data Order : Set where
     Less : Order
     Equal : Order
@@ -73,34 +73,29 @@ module Language.miCro where
   NatLess (suc m) zero = false
   NatLess (suc m) (suc n) = NatLess m n
 
-  -- Comparison, between two natural numbers. M and N here represent Nats. Messy cases because of pos, neg, and zero --
+  -- Comparison, between two natural numbers--
   compare : Nat → Nat → Order
   compare zero zero = Equal
   compare zero (suc n) = Less
   compare (suc m) zero = Greater
   compare (suc m) (suc n) = compare m n
 
-  --- --- Syntax part of miCro, these (along with integers) are used to actually write the code --- ---
-
-
-  -- Variable type identifier
-  -- Used in the variable but removed from other functions since pointers and nats are identical. Keeping it in in case it's useful later
-  data VarType : Set where
-    Natural : VarType
-    Pointer : VarType
-
+  --- Syntax part of miCro  ---
 
   -- Variables, with two arguments for name and value, are combined in a variable list to use as environment --
   -- could also change later to BoolVar, IntVar, etc for more variable types
   data Variable : Set where
     Var : String → Nat → Variable
 
+  -- Heap is organized as a basic array of sorts, containing only nats
+  -- It begins with zero length and is extended as necessary when values are added
   data Heap : Set where
     [h] : Heap
     _:H:_ : Nat → Heap → Heap
 
   infixr 5 _:H:_
 
+  -- Environment holds the variables and their values
   data Env : Set where
     [e]  : Env
     _:e:_ : Variable → Env → Env
@@ -119,12 +114,12 @@ module Language.miCro where
   readHeapHelper (n :H: h) zero = n
   readHeapHelper (n :H: h) (suc x) = readHeapHelper h x
 
-  -- Helper function to return the total spaces in the heap
+  -- Helper function to return the total spaces occuppied in the heap
   heapSize : Heap → Nat
   heapSize [h] = zero
   heapSize (n :H: h) = suc (heapSize h)
 
-  -- Expressions, for Assigning Variables --
+  -- Expressions, used in comparisons or when assigning variables a value
   data Exp : Set where
     readVar : String → Exp
     plus : Exp → Exp → Exp
@@ -170,7 +165,7 @@ module Language.miCro where
   eval r (minus e1 e2) = (eval r e1) - (eval r e2)
   eval r (times e n) = (eval r e) * n
 
-  -- Reduce, to simplify Cnd to boolean values --
+  -- Check, to reduce Cnd to boolean values --
   check : RAM → Cnd → Bool
   check r (Not c) with check r c
   ... | false = true
@@ -212,7 +207,7 @@ module Language.miCro where
   ... | true = ((Var str1 x) :e: v)
   ... | false = ((Var str1 n) :e: (update v str2 x))
 
-  -- Write function, to write values into the heap (again, order is address then value
+  -- Write function, to write values into the heap at a specific address
   write : Heap → Nat → Nat → Heap
   write (n :H: h) zero x = (x :H: h)
   write (n :H: h) (suc a) x = n :H: (write h a x)

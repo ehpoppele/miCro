@@ -1,4 +1,6 @@
 --- Unit Tests for Parser Functions ---
+-- Some have been removed since they use functions removed from the parser or from the language
+-- Most tests are functional and confirm that the parser behaves as expected
 
 module Language.parser_tests where
     open import Language.miCro
