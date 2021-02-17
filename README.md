@@ -1,12 +1,12 @@
 # miCro
 
-### An Attempt to Implemente Hoare Triples in Agda
+## An Attempt to Implement Hoare Triples in Agda
 
 This project features a nearly-complete implementation of Hoare Triples in Agda, acting on code segments and predicates written in a very minimal C-style language (miCro), which is also implemented in Agda.
 
 A short presentation (in the form of LaTeX slides) will be added to succintly describe the project.
 
-#### Files
+### Files
 
 The Language folder contains the implementation of the miCro language, featuring an interpreter, a recursive descent parser, and a tokenizer, as well as some test files for each of these.
 
@@ -16,7 +16,7 @@ The Old Versions folder contains  several previous implementations including a m
 
 The main project folder also includes the Hoare Triple file and an Example file which includes a few tests and proofs of this Hoare Triple Implementation. The main Hoare Triple file includes the definition of the triple as a data type, as well as the symbolic environments and the functions which act on them to verify the correctness of a triple.
 
-#### The Language
+### The Language
 
 The language uses C-style syntax and includes variable assignment, if-else statements, while loops, and heap operations. The heap operations are reading from the heap into a variable, writing to a specific location in the heap, or adding a New value to the end of the current heap. 
 
@@ -24,7 +24,7 @@ If-else and while statements take a condition as the first argument, which can b
 
 Expressions are used for Condition comparisons, variable assignments, or writing to the heap. They include only natural numbers and variable reads, and can be joined by plus or minus (minus always giving zero as a minimum value). Times can also be used in an expression, but applies to only a single expression, multiplying it by a constant natural number (multiplication by variables or more complicated expressions is not allowed).
 
-#### Hoare Triples
+### Hoare Triples
 
 The Hoare Triples are implemented as a data type which takes one pre-Condition, one Stmt to execute, and one post-Condition. The current constructor for the triple takes a ConditionHolds object as proof, which is another object that takes a SymbolicEnv and a Condition, and provides proof that the Condition holds in all possible states that the SymbolicEnv represents. In this case, the SymbolicEnv represents the "end state" after applying the Stmt to the pre-Condition, while the Condition used in the ConditionHolds object will be the same as the post-Condition.
 
